@@ -55,6 +55,11 @@ public enum PocketModLayout {
 }
 
 public enum PocketModImposer {
+    public static func extraRotationDegrees(pageIndex: Int, isLandscape: Bool) -> Int {
+        let isOddNumberedPage = pageIndex.isMultiple(of: 2)
+        return isOddNumberedPage && isLandscape ? 180 : 0
+    }
+
     public static func impose(inputURL: URL, outputURL: URL, includeGuides: Bool = false) throws {
         guard let document = PDFDocument(url: inputURL) else {
             throw PocketModError.unreadablePDF(inputURL)
@@ -147,6 +152,12 @@ public enum PocketModImposer {
         let pageBounds = page.bounds(for: .cropBox)
         guard pageBounds.width > 0, pageBounds.height > 0 else { return }
 
+        // PDFKit may return display-oriented bounds for a landscape page.
+        // Use the underlying CGPDFPage crop box to determine the source page's
+        // actual orientation, falling back to PDFKit only if no pageRef exists.
+        let rawPageBounds = page.pageRef?.getBoxRect(.cropBox) ?? pageBounds
+        let isLandscape = rawPageBounds.width > rawPageBounds.height
+
         let scale = min(cell.width / pageBounds.width, cell.height / pageBounds.height)
         let drawnSize = CGSize(width: pageBounds.width * scale, height: pageBounds.height * scale)
         let origin = CGPoint(
@@ -157,10 +168,12 @@ public enum PocketModImposer {
         context.saveGState()
         context.translateBy(x: origin.x, y: origin.y)
 
-        // The PocketMod panel orientation already supplies the correct half-turn.
-        // Empirical fold testing showed that applying an additional 180 degrees to
-        // odd-numbered landscape source pages reverses them incorrectly.
-        if placement.rotationDegrees == 180 {
+        let totalRotation = (
+            placement.rotationDegrees
+            + extraRotationDegrees(pageIndex: pageIndex, isLandscape: isLandscape)
+        ) % 360
+
+        if totalRotation == 180 {
             context.translateBy(x: drawnSize.width / 2, y: drawnSize.height / 2)
             context.rotate(by: .pi)
             context.translateBy(x: -drawnSize.width / 2, y: -drawnSize.height / 2)
