@@ -61,7 +61,7 @@ public enum PocketModImposer {
         return isOddNumberedPage && isLandscape ? 180 : 0
     }
 
-    public static func impose(inputURL: URL, outputURL: URL) throws {
+    public static func impose(inputURL: URL, outputURL: URL, includeGuides: Bool = false) throws {
         guard let document = PDFDocument(url: inputURL) else {
             throw PocketModError.unreadablePDF(inputURL)
         }
@@ -100,10 +100,41 @@ public enum PocketModImposer {
                 )
             }
 
+            if includeGuides {
+                drawGuides(in: context, sheetSize: mediaBox.size)
+            }
+
             context.endPDFPage()
         }
 
         context.closePDF()
+    }
+
+    private static func drawGuides(in context: CGContext, sheetSize: CGSize) {
+        let quarter = sheetSize.width / 4
+        let halfY = sheetSize.height / 2
+
+        context.saveGState()
+        context.setStrokeColor(CGColor(gray: 0.25, alpha: 0.7))
+        context.setLineWidth(0.6)
+        context.setLineDash(phase: 0, lengths: [4, 4])
+
+        for x in [quarter, quarter * 2, quarter * 3] {
+            context.move(to: CGPoint(x: x, y: 0))
+            context.addLine(to: CGPoint(x: x, y: sheetSize.height))
+        }
+        context.move(to: CGPoint(x: 0, y: halfY))
+        context.addLine(to: CGPoint(x: quarter, y: halfY))
+        context.move(to: CGPoint(x: quarter * 3, y: halfY))
+        context.addLine(to: CGPoint(x: sheetSize.width, y: halfY))
+        context.strokePath()
+
+        context.setLineDash(phase: 0, lengths: [])
+        context.setLineWidth(1.2)
+        context.move(to: CGPoint(x: quarter, y: halfY))
+        context.addLine(to: CGPoint(x: quarter * 3, y: halfY))
+        context.strokePath()
+        context.restoreGState()
     }
 
     private static func draw(
