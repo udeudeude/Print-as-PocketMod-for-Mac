@@ -31,19 +31,17 @@ rm -f "$PLAIN" "$GUIDED"
 
 write_service() {
   local target="$1"
-  local mode="$2"
+  local guided="$2"
 
   {
     print -r -- '#!/bin/zsh'
     print -r -- 'set -u'
-    printf 'MODE=%q\n' "$mode"
+    printf 'GUIDED=%q\n' "$guided"
     cat <<'SERVICE_EOF'
 
 APP="$HOME/Applications/Print as PocketMod.app"
 PDF="${3:-}"
 
-# Core Printing normally supplies: title, CUPS options, PDF path.
-# Fall back to any PDF-looking existing argument if necessary.
 if [[ -z "$PDF" || ! -f "$PDF" ]]; then
   PDF=""
   for candidate in "$@"; do
@@ -55,7 +53,14 @@ fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
 
-exec /usr/bin/open -n -a "$APP" --args "$MODE" "$PDF"
+if [[ "$GUIDED" == "yes" ]]; then
+  GUIDE_DIR="$(/usr/bin/mktemp -d /tmp/PrintAsPocketModGuides.XXXXXX)" || exit 1
+  GUIDE_PDF="$GUIDE_DIR/PrintAsPocketModGuides.pdf"
+  /bin/cp "$PDF" "$GUIDE_PDF" || { /bin/rm -rf "$GUIDE_DIR"; exit 1; }
+  exec /usr/bin/open -n -a "$APP" "$GUIDE_PDF"
+else
+  exec /usr/bin/open -n -a "$APP" "$PDF"
+fi
 SERVICE_EOF
   } > "$target"
 
@@ -63,8 +68,8 @@ SERVICE_EOF
   /bin/zsh -n "$target"
 }
 
-write_service "$PLAIN" "--plain"
-write_service "$GUIDED" "--guides"
+write_service "$PLAIN" "no"
+write_service "$GUIDED" "yes"
 
 echo
 echo "Installed:"
