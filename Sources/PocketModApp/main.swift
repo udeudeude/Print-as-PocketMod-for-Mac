@@ -10,26 +10,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         cleanupStaleTemporaryFiles()
+        log("App launched")
 
-        // A Print-dialog PDF Service launches this app by opening the spool PDF with it.
-        // Give LaunchServices a moment to deliver that open-file event. If no file arrives,
-        // fail visibly rather than presenting an unexplained Finder file chooser.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             if !self.receivedOpenEvent && self.pendingJobs == 0 {
-                self.showError(
-                    message: "No PDF was received from the Print dialog. Reinstall Print as PocketMod and try again."
+                self.log("No PDF open event arrived")
+                self.showFatalError(
+                    "No PDF was received from the Print dialog. The helper app launched, but macOS did not deliver the print PDF."
                 )
-                NSApp.terminate(nil)
             }
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        log("App terminating")
         removeTemporaryOutputs()
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         receivedOpenEvent = true
+        log("Received openFiles: \(filenames.joined(separator: " | "))")
         sender.reply(toOpenOrPrint: .success)
 
         for filename in filenames {
@@ -41,11 +41,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func process(inputURL: URL, includeGuides: Bool) {
         guard inputURL.pathExtension.lowercased() == "pdf" else {
-            showError(message: "The Print service did not provide a PDF.")
+            log("Rejected non-PDF input: \(inputURL.path)")
+            showFatalError("The Print service did not provide a PDF.")
             return
         }
 
         pendingJobs += 1
+        log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
 
         do {
             let outputURL = makeTemporaryOutputURL(for: inputURL)
@@ -56,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             temporaryOutputs.append(outputURL)
             removeGuidedInputIfNeeded(inputURL)
+            log("Created PocketMod: \(outputURL.path)")
 
             let configuration = NSWorkspace.OpenConfiguration()
 
@@ -68,21 +71,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     configuration: configuration
                 ) { _, error in
                     if let error {
-                        self.showError(message: error.localizedDescription)
+                        self.log("Preview open failed: \(error.localizedDescription)")
+                        self.showError(error.localizedDescription)
+                    } else {
+                        self.log("Preview accepted PocketMod")
                     }
                     self.finishedOne()
                 }
             } else {
+                log("Preview app not found; using default PDF viewer")
                 NSWorkspace.shared.open(outputURL, configuration: configuration) { _, error in
                     if let error {
-                        self.showError(message: error.localizedDescription)
+                        self.log("Default viewer open failed: \(error.localizedDescription)")
+                        self.showError(error.localizedDescription)
+                    } else {
+                        self.log("Default viewer accepted PocketMod")
                     }
                     self.finishedOne()
                 }
             }
         } catch {
+            log("Imposition failed: \(error.localizedDescription)")
             removeGuidedInputIfNeeded(inputURL)
-            showError(message: error.localizedDescription)
+            showError(error.localizedDescription)
             finishedOne()
         }
     }
@@ -128,7 +139,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func finishedOne() {
         pendingJobs -= 1
         if pendingJobs <= 0 {
-            // Preview may accept the open request before it has fully read the file.
             DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
                 NSApp.terminate(nil)
             }
@@ -142,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         temporaryOutputs.removeAll()
     }
 
-    private func showError(message: String) {
+    private func showError(_ message: String) {
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
@@ -150,6 +160,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.messageText = "Print as PocketMod"
             alert.informativeText = message
             alert.runModal()
+        }
+    }
+
+    private func showFatalError(_ message: String) {
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "Print as PocketMod"
+            alert.informativeText = message
+            alert.runModal()
+            NSApp.terminate(nil)
+        }
+    }
+
+    private func log(_ message: String) {
+        let manager = FileManager.default
+        guard let logs = try? manager.url(
+            for: .libraryDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ).appendingPathComponent("Logs", isDirectory: true) else {
+            return
+        }
+
+        try? manager.createDirectory(at: logs, withIntermediateDirectories: true)
+        let url = logs.appendingPathComponent("Print-as-PocketMod.log")
+        let line = "\(ISO8601DateFormatter().string(from: Date()))  \(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+
+        if manager.fileExists(atPath: url.path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
         }
     }
 }
