@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="0.2.0"
+VERSION="0.2.1"
 BUILD="$ROOT/.build/release/PocketModApp"
 DIST="$ROOT/dist/Print-as-PocketMod-for-Mac-v$VERSION"
 APP="$DIST/Print as PocketMod.app"
@@ -41,27 +41,44 @@ fi
 
 write_service() {
   local target="$1"
-  local mode="$2"
-  cat > "$target" <<SERVICE_EOF
-#!/bin/zsh
-set -u
+  local guided="$2"
+
+  {
+    print -r -- '#!/bin/zsh'
+    print -r -- 'set -u'
+    printf 'GUIDED=%q\n' "$guided"
+    cat <<'SERVICE_EOF'
 APP="$HOME/Applications/Print as PocketMod.app"
 PDF="${3:-}"
+
 if [[ -z "$PDF" || ! -f "$PDF" ]]; then
+  PDF=""
   for candidate in "$@"; do
     if [[ -f "$candidate" && "${candidate:l}" == *.pdf ]]; then
       PDF="$candidate"
     fi
   done
 fi
+
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
-exec /usr/bin/open -n -a "$APP" --args "$mode" "$PDF"
+
+if [[ "$GUIDED" == "yes" ]]; then
+  GUIDE_DIR="$(/usr/bin/mktemp -d /tmp/PrintAsPocketModGuides.XXXXXX)" || exit 1
+  GUIDE_PDF="$GUIDE_DIR/PrintAsPocketModGuides.pdf"
+  /bin/cp "$PDF" "$GUIDE_PDF" || { /bin/rm -rf "$GUIDE_DIR"; exit 1; }
+  exec /usr/bin/open -n -a "$APP" "$GUIDE_PDF"
+else
+  exec /usr/bin/open -n -a "$APP" "$PDF"
+fi
 SERVICE_EOF
+  } > "$target"
+
   chmod 755 "$target"
+  /bin/zsh -n "$target"
 }
 
-write_service "$PLAIN" "--plain"
-write_service "$GUIDED" "--guides"
+write_service "$PLAIN" "no"
+write_service "$GUIDED" "yes"
 
 echo
 echo "Installed Print as PocketMod."
