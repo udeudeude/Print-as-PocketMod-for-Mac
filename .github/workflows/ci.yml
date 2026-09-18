@@ -11,9 +11,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: Swift version
         run: swift --version
+      - name: Validate bundle metadata and scripts
+        run: |
+          plutil -lint Resources/Info.plist
+          zsh -n scripts/install.sh
+          zsh -n scripts/uninstall.sh
       - name: Build
         run: swift build
       - name: Test
         run: swift test
       - name: Release build
         run: swift build -c release --product PocketModApp
+      - name: Exercise installer
+        run: |
+          TEST_HOME="$RUNNER_TEMP/pocketmod-home"
+          mkdir -p "$TEST_HOME"
+          HOME="$TEST_HOME" zsh scripts/install.sh
+          test -x "$TEST_HOME/Applications/Print as PocketMod.app/Contents/MacOS/PocketModApp"
+          test -x "$TEST_HOME/Library/PDF Services/Print as PocketMod"
+          test -x "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
+          zsh -n "$TEST_HOME/Library/PDF Services/Print as PocketMod"
+          zsh -n "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
