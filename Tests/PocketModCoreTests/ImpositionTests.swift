@@ -24,15 +24,23 @@ final class ImpositionTests: XCTestCase {
         XCTAssertNil(placements[7].pageIndex)
     }
 
-    func testLandscapePagesUseTheSamePanelRotationAsPortraitPages() {
-        let placements = PocketModLayout.placements(startingAt: 8, pageCount: 13)
-
-        // On the second sheet, source pages 9, 10, and 11 occupy slots whose
-        // PocketMod panel rotations are 180, 0, and 0 degrees respectively.
-        // Landscape orientation must not add another parity-based half-turn.
-        XCTAssertEqual(placements.first { $0.pageIndex == 8 }?.rotationDegrees, 180)
-        XCTAssertEqual(placements.first { $0.pageIndex == 9 }?.rotationDegrees, 0)
-        XCTAssertEqual(placements.first { $0.pageIndex == 10 }?.rotationDegrees, 0)
+    func testOddNumberedLandscapePagesGetAnExtraHalfTurn() {
+        XCTAssertEqual(
+            PocketModImposer.extraRotationDegrees(pageIndex: 8, isLandscape: true),
+            180
+        )
+        XCTAssertEqual(
+            PocketModImposer.extraRotationDegrees(pageIndex: 9, isLandscape: true),
+            0
+        )
+        XCTAssertEqual(
+            PocketModImposer.extraRotationDegrees(pageIndex: 10, isLandscape: true),
+            180
+        )
+        XCTAssertEqual(
+            PocketModImposer.extraRotationDegrees(pageIndex: 8, isLandscape: false),
+            0
+        )
     }
 
     func testSheetCount() {
