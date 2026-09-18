@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingJobs = 0
     private var receivedOpenEvent = false
+    private var temporaryOutputs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -15,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.choosePDF()
             }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        removeTemporaryOutputs()
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
@@ -53,16 +58,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let outputURL = makeTemporaryOutputURL(for: inputURL)
                 try PocketModImposer.impose(inputURL: inputURL, outputURL: outputURL)
+                temporaryOutputs.append(outputURL)
 
                 let configuration = NSWorkspace.OpenConfiguration()
                 NSWorkspace.shared.open(outputURL, configuration: configuration) { _, error in
                     if let error {
                         self.showError(message: error.localizedDescription)
-                    } else {
-                        // Preview (or another PDF viewer) has opened the document. Remove our
-                        // temporary directory entry immediately. The viewer can still display
-                        // and print the already-open document; saving is an explicit user action.
-                        try? FileManager.default.removeItem(at: outputURL)
                     }
                     self.finishedOne()
                 }
@@ -82,8 +83,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func finishedOne() {
         pendingJobs -= 1
         if pendingJobs <= 0 {
-            NSApp.terminate(nil)
+            // LaunchServices can report that the viewer accepted the open request before
+            // the viewer has actually read the file. Give it time to acquire the document,
+            // then terminate; applicationWillTerminate removes our temporary pathname.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                NSApp.terminate(nil)
+            }
         }
+    }
+
+    private func removeTemporaryOutputs() {
+        for url in temporaryOutputs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        temporaryOutputs.removeAll()
     }
 
     private func showError(message: String) {
