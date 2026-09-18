@@ -24,6 +24,16 @@ final class ImpositionTests: XCTestCase {
         XCTAssertNil(placements[7].pageIndex)
     }
 
+    func testLandscapeOddNumberedPagesGetAnExtraHalfTurn() {
+        let landscape = CGRect(x: 0, y: 0, width: 792, height: 612)
+        let portrait = CGRect(x: 0, y: 0, width: 612, height: 792)
+
+        XCTAssertEqual(PocketModImposer.extraRotationDegrees(pageIndex: 0, pageBounds: landscape), 180)
+        XCTAssertEqual(PocketModImposer.extraRotationDegrees(pageIndex: 1, pageBounds: landscape), 0)
+        XCTAssertEqual(PocketModImposer.extraRotationDegrees(pageIndex: 2, pageBounds: landscape), 180)
+        XCTAssertEqual(PocketModImposer.extraRotationDegrees(pageIndex: 0, pageBounds: portrait), 0)
+    }
+
     func testSheetCount() {
         XCTAssertEqual(PocketModLayout.sheetCount(for: 0), 0)
         XCTAssertEqual(PocketModLayout.sheetCount(for: 1), 1)
