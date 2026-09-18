@@ -51,13 +51,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         for inputURL in pdfs {
             do {
-                let outputURL = try makeOutputURL(for: inputURL)
+                let outputURL = makeTemporaryOutputURL(for: inputURL)
                 try PocketModImposer.impose(inputURL: inputURL, outputURL: outputURL)
 
                 let configuration = NSWorkspace.OpenConfiguration()
                 NSWorkspace.shared.open(outputURL, configuration: configuration) { _, error in
                     if let error {
                         self.showError(message: error.localizedDescription)
+                    } else {
+                        // Preview (or another PDF viewer) has opened the document. Remove our
+                        // temporary directory entry immediately. The viewer can still display
+                        // and print the already-open document; saving is an explicit user action.
+                        try? FileManager.default.removeItem(at: outputURL)
                     }
                     self.finishedOne()
                 }
@@ -68,25 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func makeOutputURL(for inputURL: URL) throws -> URL {
-        let manager = FileManager.default
-        let cacheRoot = try manager.url(
-            for: .cachesDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let directory = cacheRoot.appendingPathComponent(
-            "Print-as-PocketMod-for-Mac",
-            isDirectory: true
-        )
-        try manager.createDirectory(at: directory, withIntermediateDirectories: true)
-
+    private func makeTemporaryOutputURL(for inputURL: URL) -> URL {
         let stem = inputURL.deletingPathExtension().lastPathComponent
-        let stamp = ISO8601DateFormatter()
-            .string(from: Date())
-            .replacingOccurrences(of: ":", with: "-")
-        return directory.appendingPathComponent("\(stem)-PocketMod-\(stamp).pdf")
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString)-\(stem)-PocketMod.pdf")
     }
 
     private func finishedOne() {
