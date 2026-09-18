@@ -10,6 +10,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        cleanupStaleTemporaryFiles()
+
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if let pdfPath = arguments.last, pdfPath.lowercased().hasSuffix(".pdf") {
+            let includeGuides = arguments.contains("--guides")
+            receivedOpenEvent = true
+            process(urls: [URL(fileURLWithPath: pdfPath)], includeGuides: includeGuides)
+            return
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             if !self.receivedOpenEvent && self.pendingJobs == 0 {
@@ -25,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         receivedOpenEvent = true
         sender.reply(toOpenOrPrint: .success)
-        process(urls: filenames.map(URL.init(fileURLWithPath:)))
+        process(urls: filenames.map(URL.init(fileURLWithPath:)), includeGuides: false)
     }
 
     private func choosePDF() {
@@ -40,11 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.terminate(nil)
                 return
             }
-            self.process(urls: panel.urls)
+            self.process(urls: panel.urls, includeGuides: false)
         }
     }
 
-    private func process(urls: [URL]) {
+    private func process(urls: [URL], includeGuides: Bool) {
         let pdfs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
         guard !pdfs.isEmpty else {
             showError(message: "No PDF was supplied.")
@@ -57,7 +66,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for inputURL in pdfs {
             do {
                 let outputURL = makeTemporaryOutputURL(for: inputURL)
-                try PocketModImposer.impose(inputURL: inputURL, outputURL: outputURL)
+                try PocketModImposer.impose(
+                    inputURL: inputURL,
+                    outputURL: outputURL,
+                    includeGuides: includeGuides
+                )
                 temporaryOutputs.append(outputURL)
 
                 let configuration = NSWorkspace.OpenConfiguration()
@@ -77,7 +90,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeTemporaryOutputURL(for inputURL: URL) -> URL {
         let stem = inputURL.deletingPathExtension().lastPathComponent
         return FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(UUID().uuidString)-\(stem)-PocketMod.pdf")
+            .appendingPathComponent("PrintAsPocketMod-\(UUID().uuidString)-\(stem)-PocketMod.pdf")
+    }
+
+    private func cleanupStaleTemporaryFiles() {
+        let manager = FileManager.default
+        let directory = manager.temporaryDirectory
+        guard let entries = try? manager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        let cutoff = Date().addingTimeInterval(-3600)
+        for url in entries where url.lastPathComponent.hasPrefix("PrintAsPocketMod-") {
+            guard
+                let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+                let modified = values.contentModificationDate,
+                modified < cutoff
+            else { continue }
+            try? manager.removeItem(at: url)
+        }
     }
 
     private func finishedOne() {
