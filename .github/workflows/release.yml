@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test
+        run: |
+          swift test
+          swift build -c release --product PocketModApp
+
+      - name: Package
+        run: ./scripts/package-release.sh
+
+      - name: Publish v0.2.0 if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.2.0 >/dev/null 2>&1; then
+            echo "v0.2.0 already exists; leaving it unchanged."
+          else
+            gh release create v0.2.0               "dist/Print-as-PocketMod-for-Mac-v0.2.0.zip"               --title "Print as PocketMod v0.2.0"               --notes "Adds optional fold/cut guides, stale temporary-file cleanup, mixed-orientation fixes, and a prebuilt installer."
+          fi
