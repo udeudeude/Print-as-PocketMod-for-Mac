@@ -55,6 +55,12 @@ public enum PocketModLayout {
 }
 
 public enum PocketModImposer {
+    public static func extraRotationDegrees(pageIndex: Int, pageBounds: CGRect) -> Int {
+        let isOddNumberedPage = pageIndex.isMultiple(of: 2)
+        let isLandscape = pageBounds.width > pageBounds.height
+        return isOddNumberedPage && isLandscape ? 180 : 0
+    }
+
     public static func impose(inputURL: URL, outputURL: URL) throws {
         guard let document = PDFDocument(url: inputURL) else {
             throw PocketModError.unreadablePDF(inputURL)
@@ -85,7 +91,13 @@ public enum PocketModImposer {
                     continue
                 }
 
-                draw(page: page, placement: placement, in: context, sheetSize: mediaBox.size)
+                draw(
+                    page: page,
+                    pageIndex: pageIndex,
+                    placement: placement,
+                    in: context,
+                    sheetSize: mediaBox.size
+                )
             }
 
             context.endPDFPage()
@@ -96,6 +108,7 @@ public enum PocketModImposer {
 
     private static func draw(
         page: PDFPage,
+        pageIndex: Int,
         placement: PocketModPlacement,
         in context: CGContext,
         sheetSize: CGSize
@@ -119,7 +132,12 @@ public enum PocketModImposer {
         context.saveGState()
         context.translateBy(x: origin.x, y: origin.y)
 
-        if placement.rotationDegrees == 180 {
+        let totalRotation = (
+            placement.rotationDegrees
+            + extraRotationDegrees(pageIndex: pageIndex, pageBounds: pageBounds)
+        ) % 360
+
+        if totalRotation == 180 {
             context.translateBy(x: drawnSize.width / 2, y: drawnSize.height / 2)
             context.rotate(by: .pi)
             context.translateBy(x: -drawnSize.width / 2, y: -drawnSize.height / 2)
