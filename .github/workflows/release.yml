@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-v0.2.0
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: macos-14
