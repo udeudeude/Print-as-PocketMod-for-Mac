@@ -18,6 +18,8 @@ cp "$ROOT/.build/release/PocketModApp" "$APP/Contents/MacOS/PocketModApp"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 chmod 755 "$APP/Contents/MacOS/PocketModApp"
 
+/usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
+
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 if [[ -x "$LSREGISTER" ]]; then
   "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
@@ -25,18 +27,25 @@ fi
 
 echo "Installing Print-dialog PDF Services..."
 mkdir -p "$SERVICES"
+rm -f "$PLAIN" "$GUIDED"
 
 write_service() {
   local target="$1"
   local mode="$2"
-  cat > "$target" <<SERVICE_EOF
-#!/bin/zsh
-set -u
+
+  {
+    print -r -- '#!/bin/zsh'
+    print -r -- 'set -u'
+    printf 'MODE=%q\n' "$mode"
+    cat <<'SERVICE_EOF'
 
 APP="$HOME/Applications/Print as PocketMod.app"
 PDF="${3:-}"
 
+# Core Printing normally supplies: title, CUPS options, PDF path.
+# Fall back to any PDF-looking existing argument if necessary.
 if [[ -z "$PDF" || ! -f "$PDF" ]]; then
+  PDF=""
   for candidate in "$@"; do
     if [[ -f "$candidate" && "${candidate:l}" == *.pdf ]]; then
       PDF="$candidate"
@@ -46,16 +55,18 @@ fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
 
-exec /usr/bin/open -n -a "$APP" --args "$mode" "$PDF"
+exec /usr/bin/open -n -a "$APP" --args "$MODE" "$PDF"
 SERVICE_EOF
+  } > "$target"
+
   chmod 755 "$target"
+  /bin/zsh -n "$target"
 }
 
 write_service "$PLAIN" "--plain"
 write_service "$GUIDED" "--guides"
 
 echo
-echo "Installed."
-echo "Use either:"
+echo "Installed:"
 echo "  File -> Print -> PDF -> Print as PocketMod"
 echo "  File -> Print -> PDF -> Print as PocketMod with Guides"
