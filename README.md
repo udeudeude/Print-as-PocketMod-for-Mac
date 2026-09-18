@@ -21,19 +21,22 @@ The top four panels are rotated 180 degrees. Documents longer than eight pages b
 ## Requirements
 
 - macOS 13 or later
-- Xcode Command Line Tools, which provide `swift`
-
-Check with:
-
-```sh
-swift --version
-```
 
 ## Install
 
-Clone the repository, then run:
+### Easiest: prebuilt release
+
+Download the latest release ZIP from GitHub, unzip it, and double-click `Install.command`.
+
+Because the current release is not Apple-notarized, macOS may require **right-click -> Open** the first time.
+
+### From source
+
+If you have Xcode Command Line Tools installed:
 
 ```sh
+git clone https://github.com/udeudeude/Print-as-PocketMod-for-Mac.git
+cd Print-as-PocketMod-for-Mac
 ./scripts/install.sh
 ```
 
@@ -54,9 +57,11 @@ and installs a PDF workflow item at:
 1. Open any printable document.
 2. Choose **File -> Print**.
 3. Open the **PDF** menu at the bottom of the print dialog.
-4. Choose **Print as PocketMod**.
+4. Choose **Print as PocketMod** for a clean sheet, or **Print as PocketMod with Guides** for dashed fold lines plus the center cut line.
 5. The imposed PDF opens in your default PDF viewer.
 6. Inspect it, then print it at 100% / Actual Size unless your printer requires otherwise.
+
+The generated PDF is temporary and is removed automatically after the viewer has had time to open it. It becomes permanent only if you explicitly save it from the viewer. Stale temporary files left by a crash are cleaned up automatically on a later run.
 
 The source paper size is preserved but forced to landscape orientation, so Letter input becomes Letter landscape and A4 input becomes A4 landscape.
 
@@ -83,12 +88,16 @@ The implementation uses only Apple frameworks: AppKit, PDFKit, Foundation, Unifo
 
 ## Status
 
-Initial native implementation. Good next additions:
+Current implementation includes:
 
-- optional fold/cut guides
-- a direct-print mode after preview
-- an installer package for people who do not want to build from source
-- a small settings window for defaults
+- clean PocketMod output
+- optional fold/cut guide output as a second Print-menu command
+- portrait/landscape handling, including odd-page landscape correction
+- multiple PocketMod sheets for documents longer than eight pages
+- automatic cleanup of temporary output
+- a prebuilt release ZIP with double-clickable install/uninstall commands
+
+Possible future additions include code signing/notarization and a small preferences window.
 
 ## License
 
