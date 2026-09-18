@@ -55,12 +55,6 @@ public enum PocketModLayout {
 }
 
 public enum PocketModImposer {
-    public static func extraRotationDegrees(pageIndex: Int, pageBounds: CGRect) -> Int {
-        let isOddNumberedPage = pageIndex.isMultiple(of: 2)
-        let isLandscape = pageBounds.width > pageBounds.height
-        return isOddNumberedPage && isLandscape ? 180 : 0
-    }
-
     public static func impose(inputURL: URL, outputURL: URL, includeGuides: Bool = false) throws {
         guard let document = PDFDocument(url: inputURL) else {
             throw PocketModError.unreadablePDF(inputURL)
@@ -163,12 +157,10 @@ public enum PocketModImposer {
         context.saveGState()
         context.translateBy(x: origin.x, y: origin.y)
 
-        let totalRotation = (
-            placement.rotationDegrees
-            + extraRotationDegrees(pageIndex: pageIndex, pageBounds: pageBounds)
-        ) % 360
-
-        if totalRotation == 180 {
+        // The PocketMod panel orientation already supplies the correct half-turn.
+        // Empirical fold testing showed that applying an additional 180 degrees to
+        // odd-numbered landscape source pages reverses them incorrectly.
+        if placement.rotationDegrees == 180 {
             context.translateBy(x: drawnSize.width / 2, y: drawnSize.height / 2)
             context.rotate(by: .pi)
             context.translateBy(x: -drawnSize.width / 2, y: -drawnSize.height / 2)
