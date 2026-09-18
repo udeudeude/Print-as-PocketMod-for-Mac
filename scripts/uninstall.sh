@@ -2,9 +2,10 @@
 set -euo pipefail
 
 APP="$HOME/Applications/Print as PocketMod.app"
-SERVICE="$HOME/Library/PDF Services/Print as PocketMod"
+PLAIN="$HOME/Library/PDF Services/Print as PocketMod"
+GUIDED="$HOME/Library/PDF Services/Print as PocketMod with Guides"
 
-rm -f "$SERVICE"
+rm -f "$PLAIN" "$GUIDED"
 rm -rf "$APP"
 
 echo "Removed Print as PocketMod."
