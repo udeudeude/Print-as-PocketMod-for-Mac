@@ -74,11 +74,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 temporaryOutputs.append(outputURL)
 
                 let configuration = NSWorkspace.OpenConfiguration()
-                NSWorkspace.shared.open(outputURL, configuration: configuration) { _, error in
-                    if let error {
-                        self.showError(message: error.localizedDescription)
+
+                if let previewURL = NSWorkspace.shared.urlForApplication(
+                    withBundleIdentifier: "com.apple.Preview"
+                ) {
+                    NSWorkspace.shared.open(
+                        [outputURL],
+                        withApplicationAt: previewURL,
+                        configuration: configuration
+                    ) { _, error in
+                        if let error {
+                            self.showError(message: error.localizedDescription)
+                        }
+                        self.finishedOne()
                     }
-                    self.finishedOne()
+                } else {
+                    NSWorkspace.shared.open(outputURL, configuration: configuration) { _, error in
+                        if let error {
+                            self.showError(message: error.localizedDescription)
+                        }
+                        self.finishedOne()
+                    }
                 }
             } catch {
                 showError(message: error.localizedDescription)
