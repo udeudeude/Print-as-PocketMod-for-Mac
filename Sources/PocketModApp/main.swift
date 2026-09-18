@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import PocketModCore
-import UniformTypeIdentifiers
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingJobs = 0
@@ -12,17 +11,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         cleanupStaleTemporaryFiles()
 
-        let arguments = Array(CommandLine.arguments.dropFirst())
-        if let pdfPath = arguments.last, pdfPath.lowercased().hasSuffix(".pdf") {
-            let includeGuides = arguments.contains("--guides")
-            receivedOpenEvent = true
-            process(urls: [URL(fileURLWithPath: pdfPath)], includeGuides: includeGuides)
-            return
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        // A Print-dialog PDF Service launches this app by opening the spool PDF with it.
+        // Give LaunchServices a moment to deliver that open-file event. If no file arrives,
+        // fail visibly rather than presenting an unexplained Finder file chooser.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             if !self.receivedOpenEvent && self.pendingJobs == 0 {
-                self.choosePDF()
+                self.showError(
+                    message: "No PDF was received from the Print dialog. Reinstall Print as PocketMod and try again."
+                )
+                NSApp.terminate(nil)
             }
         }
     }
@@ -34,73 +31,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         receivedOpenEvent = true
         sender.reply(toOpenOrPrint: .success)
-        process(urls: filenames.map(URL.init(fileURLWithPath:)), includeGuides: false)
-    }
 
-    private func choosePDF() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.pdf]
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-
-        NSApp.activate(ignoringOtherApps: true)
-        panel.begin { response in
-            guard response == .OK else {
-                NSApp.terminate(nil)
-                return
-            }
-            self.process(urls: panel.urls, includeGuides: false)
+        for filename in filenames {
+            let inputURL = URL(fileURLWithPath: filename)
+            let includeGuides = isGuidedInput(inputURL)
+            process(inputURL: inputURL, includeGuides: includeGuides)
         }
     }
 
-    private func process(urls: [URL], includeGuides: Bool) {
-        let pdfs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
-        guard !pdfs.isEmpty else {
-            showError(message: "No PDF was supplied.")
-            NSApp.terminate(nil)
+    private func process(inputURL: URL, includeGuides: Bool) {
+        guard inputURL.pathExtension.lowercased() == "pdf" else {
+            showError(message: "The Print service did not provide a PDF.")
             return
         }
 
-        pendingJobs += pdfs.count
+        pendingJobs += 1
 
-        for inputURL in pdfs {
-            do {
-                let outputURL = makeTemporaryOutputURL(for: inputURL)
-                try PocketModImposer.impose(
-                    inputURL: inputURL,
-                    outputURL: outputURL,
-                    includeGuides: includeGuides
-                )
-                temporaryOutputs.append(outputURL)
+        do {
+            let outputURL = makeTemporaryOutputURL(for: inputURL)
+            try PocketModImposer.impose(
+                inputURL: inputURL,
+                outputURL: outputURL,
+                includeGuides: includeGuides
+            )
+            temporaryOutputs.append(outputURL)
+            removeGuidedInputIfNeeded(inputURL)
 
-                let configuration = NSWorkspace.OpenConfiguration()
+            let configuration = NSWorkspace.OpenConfiguration()
 
-                if let previewURL = NSWorkspace.shared.urlForApplication(
-                    withBundleIdentifier: "com.apple.Preview"
-                ) {
-                    NSWorkspace.shared.open(
-                        [outputURL],
-                        withApplicationAt: previewURL,
-                        configuration: configuration
-                    ) { _, error in
-                        if let error {
-                            self.showError(message: error.localizedDescription)
-                        }
-                        self.finishedOne()
+            if let previewURL = NSWorkspace.shared.urlForApplication(
+                withBundleIdentifier: "com.apple.Preview"
+            ) {
+                NSWorkspace.shared.open(
+                    [outputURL],
+                    withApplicationAt: previewURL,
+                    configuration: configuration
+                ) { _, error in
+                    if let error {
+                        self.showError(message: error.localizedDescription)
                     }
-                } else {
-                    NSWorkspace.shared.open(outputURL, configuration: configuration) { _, error in
-                        if let error {
-                            self.showError(message: error.localizedDescription)
-                        }
-                        self.finishedOne()
-                    }
+                    self.finishedOne()
                 }
-            } catch {
-                showError(message: error.localizedDescription)
-                finishedOne()
+            } else {
+                NSWorkspace.shared.open(outputURL, configuration: configuration) { _, error in
+                    if let error {
+                        self.showError(message: error.localizedDescription)
+                    }
+                    self.finishedOne()
+                }
             }
+        } catch {
+            removeGuidedInputIfNeeded(inputURL)
+            showError(message: error.localizedDescription)
+            finishedOne()
         }
+    }
+
+    private func isGuidedInput(_ url: URL) -> Bool {
+        url.deletingLastPathComponent().lastPathComponent.hasPrefix("PrintAsPocketModGuides.")
+    }
+
+    private func removeGuidedInputIfNeeded(_ url: URL) {
+        let directory = url.deletingLastPathComponent()
+        guard directory.lastPathComponent.hasPrefix("PrintAsPocketModGuides.") else {
+            return
+        }
+        try? FileManager.default.removeItem(at: directory)
     }
 
     private func makeTemporaryOutputURL(for inputURL: URL) -> URL {
@@ -132,9 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func finishedOne() {
         pendingJobs -= 1
         if pendingJobs <= 0 {
-            // LaunchServices can report that the viewer accepted the open request before
-            // the viewer has actually read the file. Give it time to acquire the document,
-            // then terminate; applicationWillTerminate removes our temporary pathname.
+            // Preview may accept the open request before it has fully read the file.
             DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
                 NSApp.terminate(nil)
             }
