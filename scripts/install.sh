@@ -3,8 +3,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$HOME/Applications/Print as PocketMod.app"
-SUPPORT="$HOME/Library/Application Support/Print as PocketMod"
-CLI="$SUPPORT/PocketModCLI"
 SERVICES="$HOME/Library/PDF Services"
 PLAIN="$SERVICES/Print as PocketMod"
 GUIDED="$SERVICES/Print as PocketMod with Guides"
@@ -12,15 +10,13 @@ GUIDED="$SERVICES/Print as PocketMod with Guides"
 echo "Building Print as PocketMod..."
 cd "$ROOT"
 /usr/bin/swift build -c release --product PocketModApp
-/usr/bin/swift build -c release --product PocketModCLI
 
-echo "Installing helper app and direct converter..."
+echo "Installing helper app..."
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$SUPPORT"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/.build/release/PocketModApp" "$APP/Contents/MacOS/PocketModApp"
-cp "$ROOT/.build/release/PocketModCLI" "$CLI"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
-chmod 755 "$APP/Contents/MacOS/PocketModApp" "$CLI"
+chmod 755 "$APP/Contents/MacOS/PocketModApp"
 
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
@@ -35,15 +31,15 @@ rm -f "$PLAIN" "$GUIDED"
 
 write_service() {
   local target="$1"
-  local guided="$2"
+  local mode="$2"
 
   {
     print -r -- '#!/bin/zsh'
     print -r -- 'set -u'
-    printf 'GUIDED=%q\n' "$guided"
+    printf 'MODE=%q\n' "$mode"
     cat <<'SERVICE_EOF'
 
-CLI="$HOME/Library/Application Support/Print as PocketMod/PocketModCLI"
+APP="$HOME/Applications/Print as PocketMod.app"
 PDF="${3:-}"
 
 if [[ -z "$PDF" || ! -f "$PDF" ]]; then
@@ -56,18 +52,10 @@ if [[ -z "$PDF" || ! -f "$PDF" ]]; then
 fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
-[[ -x "$CLI" ]] || exit 1
 
-WORK_DIR="$(/usr/bin/mktemp -d /tmp/PrintAsPocketMod.XXXXXX)" || exit 1
-OUTPUT="$WORK_DIR/PocketMod.pdf"
-
-if [[ "$GUIDED" == "yes" ]]; then
-  "$CLI" "$PDF" "$OUTPUT" --guides || exit $?
-else
-  "$CLI" "$PDF" "$OUTPUT" || exit $?
-fi
-
-exec /usr/bin/open -a Preview "$OUTPUT"
+# Keep the PDF Service itself minimal. The print workflow runs inside
+# printtool.agent; LaunchServices hands the PDF to our normal app process.
+exec /usr/bin/open -n -a "$APP" "$PDF" --args "$MODE"
 SERVICE_EOF
   } > "$target"
 
@@ -75,8 +63,8 @@ SERVICE_EOF
   /bin/zsh -n "$target"
 }
 
-write_service "$PLAIN" "no"
-write_service "$GUIDED" "yes"
+write_service "$PLAIN" "--plain"
+write_service "$GUIDED" "--guides"
 
 echo
 echo "Installed:"
