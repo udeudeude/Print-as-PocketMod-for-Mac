@@ -132,11 +132,10 @@ enum PocketModSpoolAnalyzer {
             )
         }
 
-        // Preview rotates ordinary landscape pages into the portrait print spool
-        // at almost full size. Oversized square pages are also quarter-turned,
-        // but are reduced much more aggressively. The observed transforms are
-        // about 0.96 for landscape Letter pages and 0.58 for the oversized
-        // square test page, so 0.80 leaves a broad gap between the two cases.
+        // Preview rotates same-paper landscape pages into the portrait print
+        // spool near the normal page-fit scale. Oversized square pages are also
+        // quarter-turned, but require substantially more reduction. Observed
+        // transforms cluster near 0.96 versus 0.58, so 0.80 leaves a broad gap.
         let oversizedRotatedSource = scale > 0 && scale < 0.80
         return PocketModSourceHint(
             isLandscape: !oversizedRotatedSource,

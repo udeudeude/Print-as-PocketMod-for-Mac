@@ -88,5 +88,27 @@ final class ImpositionTests: XCTestCase {
                 rotationCorrectionDegrees: 0
             )
         )
+
+        XCTAssertEqual(
+            PocketModSpoolAnalyzer.hintForPageTransform(
+                rotationDegrees: 90,
+                scale: 0.58
+            ),
+            PocketModSourceHint(
+                isLandscape: false,
+                rotationCorrectionDegrees: 270
+            )
+        )
+
+        XCTAssertEqual(
+            PocketModSpoolAnalyzer.hintForPageTransform(
+                rotationDegrees: 270,
+                scale: 0.80
+            ),
+            PocketModSourceHint(
+                isLandscape: true,
+                rotationCorrectionDegrees: 0
+            )
+        )
     }
 }
