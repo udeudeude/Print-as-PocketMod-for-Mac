@@ -90,9 +90,7 @@ public enum PocketModImposer {
     public static func impose(
         inputURL: URL,
         outputURL: URL,
-        includeGuides: Bool = false,
-        landscapeHints: [Bool]? = nil,
-        sourceRotationCorrections: [Int]? = nil
+        includeGuides: Bool = false
     ) throws {
         guard let document = PDFDocument(url: inputURL) else {
             throw PocketModError.unreadablePDF(inputURL)
@@ -123,18 +121,15 @@ public enum PocketModImposer {
                     continue
                 }
 
+                let sourceHint = PocketModSpoolAnalyzer.hint(for: page)
                 draw(
                     page: page,
                     pageIndex: pageIndex,
                     placement: placement,
                     in: context,
                     sheetSize: mediaBox.size,
-                    isLandscapeOverride: landscapeHints.flatMap {
-                        pageIndex < $0.count ? $0[pageIndex] : nil
-                    },
-                    sourceRotationCorrectionDegrees: sourceRotationCorrections.flatMap {
-                        pageIndex < $0.count ? $0[pageIndex] : nil
-                    } ?? 0
+                    isLandscape: sourceHint.isLandscape,
+                    sourceRotationCorrectionDegrees: sourceHint.rotationCorrectionDegrees
                 )
             }
 
@@ -181,7 +176,7 @@ public enum PocketModImposer {
         placement: PocketModPlacement,
         in context: CGContext,
         sheetSize: CGSize,
-        isLandscapeOverride: Bool?,
+        isLandscape: Bool,
         sourceRotationCorrectionDegrees: Int
     ) {
         let cellWidth = sheetSize.width / 4
@@ -192,8 +187,6 @@ public enum PocketModImposer {
 
         let pageBounds = page.bounds(for: .cropBox)
         guard pageBounds.width > 0, pageBounds.height > 0 else { return }
-
-        let isLandscape = isLandscapeOverride ?? sourceIsLandscape(page: page)
 
         let scale = min(cell.width / pageBounds.width, cell.height / pageBounds.height)
         let drawnSize = CGSize(width: pageBounds.width * scale, height: pageBounds.height * scale)

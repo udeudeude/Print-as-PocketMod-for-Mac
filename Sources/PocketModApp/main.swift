@@ -1,12 +1,6 @@
 import AppKit
 import Foundation
-import PDFKit
 import PocketModCore
-
-private struct SourcePageHints {
-    let landscape: [Bool]
-    let rotationCorrections: [Int]
-}
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingJobs = 0
@@ -58,16 +52,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
-        let sourceHints = recoverSourceHintsFromSpool(spoolURL: inputURL)
-
         do {
             let outputURL = makeTemporaryOutputURL(for: inputURL)
             try PocketModImposer.impose(
                 inputURL: inputURL,
                 outputURL: outputURL,
-                includeGuides: includeGuides,
-                landscapeHints: sourceHints?.landscape,
-                sourceRotationCorrections: sourceHints?.rotationCorrections
+                includeGuides: includeGuides
             )
             temporaryOutputs.append(outputURL)
             log("Created PocketMod: \(outputURL.path)")
@@ -107,45 +97,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showError(error.localizedDescription)
             finishedOne()
         }
-    }
-
-    private func recoverSourceHintsFromSpool(spoolURL: URL) -> SourcePageHints? {
-        guard let document = PDFDocument(url: spoolURL) else {
-            log("Could not inspect print spool PDF")
-            return nil
-        }
-
-        var landscape: [Bool] = []
-        var rotationCorrections: [Int] = []
-
-        for index in 0..<document.pageCount {
-            guard let page = document.page(at: index) else {
-                landscape.append(false)
-                rotationCorrections.append(0)
-                continue
-            }
-
-            let hint = PocketModSpoolAnalyzer.hint(for: page)
-            landscape.append(hint.isLandscape)
-            rotationCorrections.append(hint.rotationCorrectionDegrees)
-        }
-
-        let landscapePages = landscape.enumerated()
-            .compactMap { $0.element ? String($0.offset + 1) : nil }
-            .joined(separator: ",")
-        let correctedPages = rotationCorrections.enumerated()
-            .compactMap { $0.element != 0 ? "\($0.offset + 1):\($0.element)" : nil }
-            .joined(separator: ",")
-
-        log(
-            "Recovered source geometry from spool content: " +
-            "landscapePages=\(landscapePages) quarterTurnCorrections=\(correctedPages)"
-        )
-
-        return SourcePageHints(
-            landscape: landscape,
-            rotationCorrections: rotationCorrections
-        )
     }
 
     private func makeTemporaryOutputURL(for inputURL: URL) -> URL {

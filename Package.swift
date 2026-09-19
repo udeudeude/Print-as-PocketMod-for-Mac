@@ -10,20 +10,10 @@ let package = Package(
         .executable(name: "PocketModApp", targets: ["PocketModApp"]),
     ],
     targets: [
-        .target(
-            name: "PocketModCore",
-            linkerSettings: [
-                .linkedFramework("PDFKit"),
-                .linkedFramework("AppKit"),
-            ]
-        ),
+        .target(name: "PocketModCore"),
         .executableTarget(
             name: "PocketModApp",
-            dependencies: ["PocketModCore"],
-            linkerSettings: [
-                .linkedFramework("PDFKit"),
-                .linkedFramework("AppKit"),
-            ]
+            dependencies: ["PocketModCore"]
         ),
         .testTarget(
             name: "PocketModCoreTests",
