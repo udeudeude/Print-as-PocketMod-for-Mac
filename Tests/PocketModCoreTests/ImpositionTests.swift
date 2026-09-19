@@ -63,4 +63,39 @@ final class ImpositionTests: XCTestCase {
         XCTAssertEqual(PocketModLayout.sheetCount(for: 16), 2)
         XCTAssertEqual(PocketModLayout.sheetCount(for: 17), 3)
     }
+    func testSpoolTransformClassifiesLandscapeAndOversizedSquare() {
+        XCTAssertEqual(
+            PocketModSpoolAnalyzer.hintForPageTransform(
+                rotationDegrees: 270,
+                scale: 0.96
+            ),
+            PocketModSourceHint(
+                isLandscape: true,
+                rotationCorrectionDegrees: 0
+            )
+        )
+
+        XCTAssertEqual(
+            PocketModSpoolAnalyzer.hintForPageTransform(
+                rotationDegrees: 270,
+                scale: 0.583
+            ),
+            PocketModSourceHint(
+                isLandscape: false,
+                rotationCorrectionDegrees: 90
+            )
+        )
+
+        XCTAssertEqual(
+            PocketModSpoolAnalyzer.hintForPageTransform(
+                rotationDegrees: 0,
+                scale: 2.04
+            ),
+            PocketModSourceHint(
+                isLandscape: false,
+                rotationCorrectionDegrees: 0
+            )
+        )
+    }
+
 }
