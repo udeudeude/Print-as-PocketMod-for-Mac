@@ -77,11 +77,13 @@ public enum PocketModImposer {
     public static func totalRotationDegrees(
         pageIndex: Int,
         placementRotationDegrees: Int,
-        isLandscape: Bool
+        isLandscape: Bool,
+        sourceRotationCorrectionDegrees: Int = 0
     ) -> Int {
         (
             placementRotationDegrees
             + extraRotationDegrees(pageIndex: pageIndex, isLandscape: isLandscape)
+            + sourceRotationCorrectionDegrees
         ) % 360
     }
 
@@ -89,7 +91,8 @@ public enum PocketModImposer {
         inputURL: URL,
         outputURL: URL,
         includeGuides: Bool = false,
-        landscapeHints: [Bool]? = nil
+        landscapeHints: [Bool]? = nil,
+        sourceRotationCorrections: [Int]? = nil
     ) throws {
         guard let document = PDFDocument(url: inputURL) else {
             throw PocketModError.unreadablePDF(inputURL)
@@ -128,7 +131,10 @@ public enum PocketModImposer {
                     sheetSize: mediaBox.size,
                     isLandscapeOverride: landscapeHints.flatMap {
                         pageIndex < $0.count ? $0[pageIndex] : nil
-                    }
+                    },
+                    sourceRotationCorrectionDegrees: sourceRotationCorrections.flatMap {
+                        pageIndex < $0.count ? $0[pageIndex] : nil
+                    } ?? 0
                 )
             }
 
@@ -175,7 +181,8 @@ public enum PocketModImposer {
         placement: PocketModPlacement,
         in context: CGContext,
         sheetSize: CGSize,
-        isLandscapeOverride: Bool?
+        isLandscapeOverride: Bool?,
+        sourceRotationCorrectionDegrees: Int
     ) {
         let cellWidth = sheetSize.width / 4
         let cellHeight = sheetSize.height / 2
@@ -196,17 +203,19 @@ public enum PocketModImposer {
         )
 
         context.saveGState()
+        context.clip(to: cell)
         context.translateBy(x: origin.x, y: origin.y)
 
         let totalRotation = totalRotationDegrees(
             pageIndex: pageIndex,
             placementRotationDegrees: placement.rotationDegrees,
-            isLandscape: isLandscape
+            isLandscape: isLandscape,
+            sourceRotationCorrectionDegrees: sourceRotationCorrectionDegrees
         )
 
-        if totalRotation == 180 {
+        if totalRotation != 0 {
             context.translateBy(x: drawnSize.width / 2, y: drawnSize.height / 2)
-            context.rotate(by: .pi)
+            context.rotate(by: CGFloat(totalRotation) * .pi / 180)
             context.translateBy(x: -drawnSize.width / 2, y: -drawnSize.height / 2)
         }
 
