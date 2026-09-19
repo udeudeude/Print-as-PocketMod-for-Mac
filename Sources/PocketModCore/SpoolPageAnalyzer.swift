@@ -1,12 +1,11 @@
 import CoreGraphics
-import Foundation
 import PDFKit
 
-public struct PocketModSourceHint: Equatable, Sendable {
-    public let isLandscape: Bool
-    public let rotationCorrectionDegrees: Int
+struct PocketModSourceHint: Equatable {
+    let isLandscape: Bool
+    let rotationCorrectionDegrees: Int
 
-    public init(isLandscape: Bool, rotationCorrectionDegrees: Int) {
+    init(isLandscape: Bool, rotationCorrectionDegrees: Int) {
         self.isLandscape = isLandscape
         self.rotationCorrectionDegrees = rotationCorrectionDegrees
     }
@@ -119,7 +118,7 @@ private let concatMatrixCallback: CGPDFOperatorCallback = { scanner, info in
     state.recordCurrentTransform()
 }
 
-public enum PocketModSpoolAnalyzer {
+enum PocketModSpoolAnalyzer {
     static func hintForPageTransform(
         rotationDegrees: Int?,
         scale: CGFloat,
@@ -147,7 +146,7 @@ public enum PocketModSpoolAnalyzer {
         )
     }
 
-    public static func hint(for page: PDFPage) -> PocketModSourceHint {
+    static func hint(for page: PDFPage) -> PocketModSourceHint {
         let fallbackLandscape = PocketModImposer.sourceIsLandscape(page: page)
         let fallback = PocketModSourceHint(
             isLandscape: fallbackLandscape,

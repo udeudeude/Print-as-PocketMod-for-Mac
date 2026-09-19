@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import PDFKit
 
-public enum PocketModError: LocalizedError {
+enum PocketModError: LocalizedError {
     case unreadablePDF(URL)
     case emptyPDF
     case cannotCreateOutput(URL)
@@ -19,13 +19,13 @@ public enum PocketModError: LocalizedError {
     }
 }
 
-public struct PocketModPlacement: Equatable, Sendable {
-    public let pageIndex: Int?
-    public let column: Int
-    public let row: Int
-    public let rotationDegrees: Int
+struct PocketModPlacement: Equatable {
+    let pageIndex: Int?
+    let column: Int
+    let row: Int
+    let rotationDegrees: Int
 
-    public init(pageIndex: Int?, column: Int, row: Int, rotationDegrees: Int) {
+    init(pageIndex: Int?, column: Int, row: Int, rotationDegrees: Int) {
         self.pageIndex = pageIndex
         self.column = column
         self.row = row
@@ -33,10 +33,10 @@ public struct PocketModPlacement: Equatable, Sendable {
     }
 }
 
-public enum PocketModLayout {
-    public static let sourceOrder = [0, 7, 6, 5, 1, 2, 3, 4]
+enum PocketModLayout {
+    static let sourceOrder = [0, 7, 6, 5, 1, 2, 3, 4]
 
-    public static func placements(startingAt basePage: Int, pageCount: Int) -> [PocketModPlacement] {
+    static func placements(startingAt basePage: Int, pageCount: Int) -> [PocketModPlacement] {
         sourceOrder.enumerated().map { slot, relativePage in
             let absolutePage = basePage + relativePage
             return PocketModPlacement(
@@ -47,20 +47,15 @@ public enum PocketModLayout {
             )
         }
     }
-
-    public static func sheetCount(for pageCount: Int) -> Int {
-        guard pageCount > 0 else { return 0 }
-        return (pageCount + 7) / 8
-    }
 }
 
 public enum PocketModImposer {
-    public static func extraRotationDegrees(pageIndex: Int, isLandscape: Bool) -> Int {
+    static func extraRotationDegrees(pageIndex: Int, isLandscape: Bool) -> Int {
         let isOddNumberedPage = pageIndex.isMultiple(of: 2)
         return isOddNumberedPage && isLandscape ? 180 : 0
     }
 
-    public static func sourceIsLandscape(page: PDFPage) -> Bool {
+    static func sourceIsLandscape(page: PDFPage) -> Bool {
         let displayedBounds = page.bounds(for: .cropBox)
         guard let pageRef = page.pageRef else {
             return displayedBounds.width > displayedBounds.height
@@ -74,7 +69,7 @@ public enum PocketModImposer {
         return effectiveWidth > effectiveHeight
     }
 
-    public static func totalRotationDegrees(
+    static func totalRotationDegrees(
         pageIndex: Int,
         placementRotationDegrees: Int,
         isLandscape: Bool,

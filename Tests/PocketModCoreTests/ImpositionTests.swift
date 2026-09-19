@@ -55,14 +55,6 @@ final class ImpositionTests: XCTestCase {
         )
     }
 
-    func testSheetCount() {
-        XCTAssertEqual(PocketModLayout.sheetCount(for: 0), 0)
-        XCTAssertEqual(PocketModLayout.sheetCount(for: 1), 1)
-        XCTAssertEqual(PocketModLayout.sheetCount(for: 8), 1)
-        XCTAssertEqual(PocketModLayout.sheetCount(for: 9), 2)
-        XCTAssertEqual(PocketModLayout.sheetCount(for: 16), 2)
-        XCTAssertEqual(PocketModLayout.sheetCount(for: 17), 3)
-    }
     func testSpoolTransformClassifiesLandscapeAndOversizedSquare() {
         XCTAssertEqual(
             PocketModSpoolAnalyzer.hintForPageTransform(
@@ -97,5 +89,4 @@ final class ImpositionTests: XCTestCase {
             )
         )
     }
-
 }
