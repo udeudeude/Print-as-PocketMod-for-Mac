@@ -230,10 +230,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             landscape.append(PocketModImposer.sourceIsLandscape(page: page))
 
             // Preview's Print dialog quarter-turns oversized square pages while
-            // fitting them to a portrait spool page. Counter that turn before
-            // applying the normal PocketMod panel rotation.
+            // fitting them to a portrait spool page. Fold testing establishes
+            // the required counter-turn direction for the resulting spool page.
             if isOversizedSquare {
-                rotationCorrections.append(270)
+                rotationCorrections.append(90)
                 oversizedSquarePages.append(String(index + 1))
             } else {
                 rotationCorrections.append(0)
