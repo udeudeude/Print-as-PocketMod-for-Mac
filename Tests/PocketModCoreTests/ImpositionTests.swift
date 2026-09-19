@@ -49,9 +49,9 @@ final class ImpositionTests: XCTestCase {
                 pageIndex: 6,
                 placementRotationDegrees: 180,
                 isLandscape: false,
-                sourceRotationCorrectionDegrees: 270
+                sourceRotationCorrectionDegrees: 90
             ),
-            90
+            270
         )
     }
 
