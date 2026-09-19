@@ -17,12 +17,10 @@ jobs:
           zsh -n scripts/install.sh
           zsh -n scripts/uninstall.sh
           zsh -n scripts/package-release.sh
-      - name: Build with warnings as errors
-        run: swift build -Xswiftc -warnings-as-errors
       - name: Test with warnings as errors
         run: swift test -Xswiftc -warnings-as-errors
-      - name: Release build
-        run: swift build -c release --product PocketModApp
+      - name: Release build with warnings as errors
+        run: swift build -c release --product PocketModApp -Xswiftc -warnings-as-errors
       - name: Exercise installer
         run: |
           TEST_HOME="$RUNNER_TEMP/pocketmod-home"
