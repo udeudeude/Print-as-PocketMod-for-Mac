@@ -6,8 +6,6 @@ import PocketModCore
 private struct SourcePageHints {
     let landscape: [Bool]
     let rotationCorrections: [Int]
-    let methods: [String]
-    let sourceSizes: [CGSize?]
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -61,7 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
         let sourceHints = recoverSourceHintsFromSpool(spoolURL: inputURL)
-        logPageDiagnostics(inputURL, sourceHints: sourceHints)
 
         do {
             let outputURL = makeTemporaryOutputURL(for: inputURL)
@@ -112,63 +109,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func logPageDiagnostics(_ inputURL: URL, sourceHints: SourcePageHints?) {
-        guard let document = PDFDocument(url: inputURL) else {
-            log("Could not inspect PDF for diagnostics")
-            return
-        }
-
-        for basePage in stride(from: 0, to: document.pageCount, by: 8) {
-            for placement in PocketModLayout.placements(
-                startingAt: basePage,
-                pageCount: document.pageCount
-            ) {
-                guard let pageIndex = placement.pageIndex,
-                      let page = document.page(at: pageIndex) else {
-                    continue
-                }
-
-                let kit = page.bounds(for: .cropBox)
-                let raw = page.pageRef?.getBoxRect(.cropBox) ?? kit
-                let rawRotation = page.pageRef.map { Int($0.rotationAngle) } ?? page.rotation
-                let spoolLandscape = PocketModImposer.sourceIsLandscape(page: page)
-                let sourceHint = sourceHints.flatMap {
-                    pageIndex < $0.landscape.count ? $0.landscape[pageIndex] : nil
-                }
-                let rotationCorrection = sourceHints.flatMap {
-                    pageIndex < $0.rotationCorrections.count ? $0.rotationCorrections[pageIndex] : nil
-                } ?? 0
-                let method = sourceHints.flatMap {
-                    pageIndex < $0.methods.count ? $0.methods[pageIndex] : nil
-                } ?? "none"
-                let sourceSize = sourceHints.flatMap {
-                    pageIndex < $0.sourceSizes.count ? $0.sourceSizes[pageIndex] : nil
-                } ?? nil
-                let effectiveLandscape = sourceHint ?? spoolLandscape
-                let extra = PocketModImposer.extraRotationDegrees(
-                    pageIndex: pageIndex,
-                    isLandscape: effectiveLandscape
-                )
-                let total = PocketModImposer.totalRotationDegrees(
-                    pageIndex: pageIndex,
-                    placementRotationDegrees: placement.rotationDegrees,
-                    isLandscape: effectiveLandscape,
-                    sourceRotationCorrectionDegrees: rotationCorrection
-                )
-
-                log(
-                    "page=\(pageIndex + 1) kit=\(Int(kit.width))x\(Int(kit.height)) " +
-                    "raw=\(Int(raw.width))x\(Int(raw.height)) rawRotation=\(rawRotation) " +
-                    "spoolLandscape=\(spoolLandscape) sourceHint=\(String(describing: sourceHint)) " +
-                    "sourceSize=\(sourceSize.map { "\(Int($0.width))x\(Int($0.height))" } ?? "nil") " +
-                    "hintMethod=\(method) effectiveLandscape=\(effectiveLandscape) " +
-                    "panelRotation=\(placement.rotationDegrees) extraRotation=\(extra) " +
-                    "sourceCorrection=\(rotationCorrection) totalRotation=\(total)"
-                )
-            }
-        }
-    }
-
     private func recoverSourceHintsFromSpool(spoolURL: URL) -> SourcePageHints? {
         guard let document = PDFDocument(url: spoolURL) else {
             log("Could not inspect print spool PDF")
@@ -177,26 +117,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         var landscape: [Bool] = []
         var rotationCorrections: [Int] = []
-        var methods: [String] = []
-        var sourceSizes: [CGSize?] = []
-        var debugDescriptions: [String] = []
 
         for index in 0..<document.pageCount {
             guard let page = document.page(at: index) else {
                 landscape.append(false)
                 rotationCorrections.append(0)
-                methods.append("missing-page")
-                sourceSizes.append(nil)
-                debugDescriptions.append("")
                 continue
             }
 
             let hint = PocketModSpoolAnalyzer.hint(for: page)
             landscape.append(hint.isLandscape)
             rotationCorrections.append(hint.rotationCorrectionDegrees)
-            methods.append(hint.method)
-            sourceSizes.append(hint.sourceSize)
-            debugDescriptions.append(hint.debugDescription)
         }
 
         let landscapePages = landscape.enumerated()
@@ -211,15 +142,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "landscapePages=\(landscapePages) quarterTurnCorrections=\(correctedPages)"
         )
 
-        for (index, debug) in debugDescriptions.enumerated() where !debug.isEmpty {
-            log("spoolAnalyzer page=\(index + 1) \(debug)")
-        }
-
         return SourcePageHints(
             landscape: landscape,
-            rotationCorrections: rotationCorrections,
-            methods: methods,
-            sourceSizes: sourceSizes
+            rotationCorrections: rotationCorrections
         )
     }
 
@@ -307,7 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if manager.fileExists(atPath: url.path),
            let handle = try? FileHandle(forWritingTo: url) {
             defer { try? handle.close() }
-            try? handle.seekToEnd()
+            _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: data)
         } else {
             try? data.write(to: url)
