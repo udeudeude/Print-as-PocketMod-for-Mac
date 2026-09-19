@@ -1,22 +1,32 @@
 #!/bin/zsh
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BUNDLED_APP="$SCRIPT_DIR/Print as PocketMod.app"
 APP="$HOME/Applications/Print as PocketMod.app"
 SERVICES="$HOME/Library/PDF Services"
 PLAIN="$SERVICES/Print as PocketMod"
 GUIDED="$SERVICES/Print as PocketMod with Guides"
 
-echo "Building Print as PocketMod..."
-cd "$ROOT"
-/usr/bin/swift build -c release --product PocketModApp
+mkdir -p "$HOME/Applications"
 
-echo "Installing helper app..."
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$ROOT/.build/release/PocketModApp" "$APP/Contents/MacOS/PocketModApp"
-cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
-chmod 755 "$APP/Contents/MacOS/PocketModApp"
+if [[ -d "$BUNDLED_APP" ]]; then
+  echo "Installing prebuilt Print as PocketMod..."
+  rm -rf "$APP"
+  cp -R "$BUNDLED_APP" "$APP"
+else
+  echo "Building Print as PocketMod..."
+  cd "$ROOT"
+  /usr/bin/swift build -c release --product PocketModApp
+
+  echo "Installing helper app..."
+  rm -rf "$APP"
+  mkdir -p "$APP/Contents/MacOS"
+  cp "$ROOT/.build/release/PocketModApp" "$APP/Contents/MacOS/PocketModApp"
+  cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+  chmod 755 "$APP/Contents/MacOS/PocketModApp"
+fi
 
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
@@ -53,8 +63,8 @@ fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
 
-# Keep the PDF Service itself minimal. The print workflow runs inside
-# printtool.agent; LaunchServices hands the PDF to our normal app process.
+# Keep the PDF Service minimal. LaunchServices hands the spool PDF from
+# printtool.agent to the normal helper-app process.
 exec /usr/bin/open -n -a "$APP" "$PDF" --args "$MODE"
 SERVICE_EOF
   } > "$target"
@@ -70,3 +80,8 @@ echo
 echo "Installed:"
 echo "  File -> Print -> PDF -> Print as PocketMod"
 echo "  File -> Print -> PDF -> Print as PocketMod with Guides"
+
+if [[ -t 0 && "${0:t}" == *.command ]]; then
+  read -k 1 "?Press any key to close..."
+  echo
+fi
