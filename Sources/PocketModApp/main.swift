@@ -177,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var rotationCorrections: [Int] = []
         var methods: [String] = []
         var sourceSizes: [CGSize?] = []
+        var debugDescriptions: [String] = []
 
         for index in 0..<document.pageCount {
             guard let page = document.page(at: index) else {
@@ -184,6 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 rotationCorrections.append(0)
                 methods.append("missing-page")
                 sourceSizes.append(nil)
+                debugDescriptions.append("")
                 continue
             }
 
@@ -192,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rotationCorrections.append(hint.rotationCorrectionDegrees)
             methods.append(hint.method)
             sourceSizes.append(hint.sourceSize)
+            debugDescriptions.append(hint.debugDescription)
         }
 
         let landscapePages = landscape.enumerated()
@@ -205,6 +208,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Recovered source geometry from spool content: " +
             "landscapePages=\(landscapePages) quarterTurnCorrections=\(correctedPages)"
         )
+
+        for (index, debug) in debugDescriptions.enumerated() where !debug.isEmpty {
+            log("spoolAnalyzer page=\(index + 1) \(debug)")
+        }
 
         return SourcePageHints(
             landscape: landscape,
