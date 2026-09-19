@@ -19,7 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         cleanupStaleTemporaryFiles()
-        log("App launched args=\(CommandLine.arguments.joined(separator: " | "))")
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        log("App launched version=\(version) build=\(build) args=\(CommandLine.arguments.joined(separator: " | "))")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             if !self.receivedOpenEvent && self.pendingJobs == 0 {
