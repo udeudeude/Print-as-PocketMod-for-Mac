@@ -33,4 +33,5 @@ jobs:
           zsh -n "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           zsh -n "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
           grep -q 'open -n -a' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
-          grep -q -- '--args --guides' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
+          grep -q 'MODE=--guides' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
+          grep -q -- '--args "$MODE"' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
