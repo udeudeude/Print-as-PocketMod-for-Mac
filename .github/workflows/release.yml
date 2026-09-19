@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -26,7 +25,11 @@ jobs:
           VERSION="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
           TAG="v$VERSION"
 
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "$GITHUB_REF_NAME" != "$TAG" ]]; then
+          if [[ "${GITHUB_REF_TYPE:-}" != "tag" ]]; then
+            echo "Releases must run from a version tag." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" != "$TAG" ]]; then
             echo "Tag $GITHUB_REF_NAME does not match Info.plist version $VERSION" >&2
             exit 1
           fi
