@@ -16,6 +16,7 @@ jobs:
           plutil -lint Resources/Info.plist
           zsh -n scripts/install.sh
           zsh -n scripts/uninstall.sh
+          zsh -n scripts/package-release.sh
       - name: Build
         run: swift build
       - name: Test
