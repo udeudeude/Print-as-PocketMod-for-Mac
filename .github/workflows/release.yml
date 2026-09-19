@@ -2,14 +2,15 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-main
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,13 +19,20 @@ jobs:
     # Apple Silicon slices, then combine them into one universal app.
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Read version
+      - name: Read and validate version
         run: |
           VERSION="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
+          TAG="v$VERSION"
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "$GITHUB_REF_NAME" != "$TAG" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match Info.plist version $VERSION" >&2
+            exit 1
+          fi
+
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "TAG=v$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "ASSET=dist/Print-as-PocketMod-for-Mac-v$VERSION.zip" >> "$GITHUB_ENV"
 
       - name: Validate
@@ -34,8 +42,8 @@ jobs:
           zsh -n scripts/uninstall.sh
           zsh -n scripts/package-release.sh
 
-      - name: Test
-        run: swift test
+      - name: Test with warnings as errors
+        run: swift test -Xswiftc -warnings-as-errors
 
       - name: Build universal app
         run: |
@@ -79,6 +87,7 @@ jobs:
           ARCHS="$(lipo -archs "$APP/Contents/MacOS/PocketModApp")"
           [[ "$ARCHS" == *x86_64* ]]
           [[ "$ARCHS" == *arm64* ]]
+          codesign --verify --deep --strict "$APP"
 
           PACKAGED_VERSION="$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")"
           test "$PACKAGED_VERSION" = "$VERSION"
@@ -86,7 +95,7 @@ jobs:
           INSTALL_HOME="$RUNNER_TEMP/release-install-home"
           rm -rf "$INSTALL_HOME"
           mkdir -p "$INSTALL_HOME"
-          printf 'x' | HOME="$INSTALL_HOME" zsh "$DIST/Install.command"
+          HOME="$INSTALL_HOME" zsh "$DIST/Install.command"
 
           test -x "$INSTALL_HOME/Applications/Print as PocketMod.app/Contents/MacOS/PocketModApp"
           test -x "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"

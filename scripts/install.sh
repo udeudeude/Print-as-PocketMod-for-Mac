@@ -11,21 +11,37 @@ GUIDED="$SERVICES/Print as PocketMod with Guides"
 
 mkdir -p "$HOME/Applications"
 
+install_binary() {
+  local binary="$1"
+
+  rm -rf "$APP"
+  mkdir -p "$APP/Contents/MacOS"
+  cp "$binary" "$APP/Contents/MacOS/PocketModApp"
+  cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+  chmod 755 "$APP/Contents/MacOS/PocketModApp"
+}
+
 if [[ -d "$BUNDLED_APP" ]]; then
   echo "Installing prebuilt Print as PocketMod..."
   rm -rf "$APP"
-  cp -R "$BUNDLED_APP" "$APP"
+  /usr/bin/ditto "$BUNDLED_APP" "$APP"
 else
-  echo "Building Print as PocketMod..."
-  cd "$ROOT"
-  /usr/bin/swift build -c release --product PocketModApp
+  BUILD="${POCKETMOD_BUILD:-}"
 
-  echo "Installing helper app..."
-  rm -rf "$APP"
-  mkdir -p "$APP/Contents/MacOS"
-  cp "$ROOT/.build/release/PocketModApp" "$APP/Contents/MacOS/PocketModApp"
-  cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
-  chmod 755 "$APP/Contents/MacOS/PocketModApp"
+  if [[ -z "$BUILD" ]]; then
+    echo "Building Print as PocketMod..."
+    cd "$ROOT"
+    /usr/bin/swift build -c release --product PocketModApp
+    BUILD="$ROOT/.build/release/PocketModApp"
+  else
+    echo "Installing provided Print as PocketMod build..."
+  fi
+
+  [[ -x "$BUILD" ]] || {
+    echo "PocketModApp binary not found at $BUILD" >&2
+    exit 1
+  }
+  install_binary "$BUILD"
 fi
 
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null

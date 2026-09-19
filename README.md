@@ -78,7 +78,7 @@ swift build
 swift test
 ```
 
-The implementation uses only Apple frameworks: AppKit, PDFKit, Foundation, Uniform Type Identifiers, and Core Graphics. There are no third-party runtime dependencies.
+The implementation uses only Apple frameworks: AppKit, PDFKit, Foundation, and Core Graphics. There are no third-party runtime dependencies.
 
 ## Uninstall
 
@@ -98,7 +98,7 @@ Current implementation includes:
 - automatic cleanup of temporary output
 - a prebuilt release ZIP with double-clickable install/uninstall commands
 
-Possible future additions include code signing/notarization and a small preferences window.
+The prebuilt app is ad-hoc signed but not Apple-notarized. Developer ID signing and notarization are the main remaining distribution improvements.
 
 ## License
 

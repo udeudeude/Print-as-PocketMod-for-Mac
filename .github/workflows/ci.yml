@@ -8,7 +8,7 @@ jobs:
   test:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Swift version
         run: swift --version
       - name: Validate bundle metadata and scripts
@@ -17,22 +17,25 @@ jobs:
           zsh -n scripts/install.sh
           zsh -n scripts/uninstall.sh
           zsh -n scripts/package-release.sh
-      - name: Build
-        run: swift build
-      - name: Test
-        run: swift test
+      - name: Build with warnings as errors
+        run: swift build -Xswiftc -warnings-as-errors
+      - name: Test with warnings as errors
+        run: swift test -Xswiftc -warnings-as-errors
       - name: Release build
         run: swift build -c release --product PocketModApp
       - name: Exercise installer
         run: |
           TEST_HOME="$RUNNER_TEMP/pocketmod-home"
           mkdir -p "$TEST_HOME"
-          HOME="$TEST_HOME" zsh scripts/install.sh
+          HOME="$TEST_HOME" \
+            POCKETMOD_BUILD="$PWD/.build/release/PocketModApp" \
+            zsh scripts/install.sh
           test -x "$TEST_HOME/Applications/Print as PocketMod.app/Contents/MacOS/PocketModApp"
           test -x "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           test -x "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
           zsh -n "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           zsh -n "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
           grep -q 'open -n -a' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
+          grep -q 'MODE=--plain' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           grep -q 'MODE=--guides' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
           grep -q -- '--args "$MODE"' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
