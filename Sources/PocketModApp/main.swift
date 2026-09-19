@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             withIntermediateDirectories: true
         )
         cleanupStaleTemporaryFiles()
+        discardOversizedLog()
 
         let version = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
@@ -94,8 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
 
+        let outputURL = makeTemporaryOutputURL(for: inputURL)
+
         do {
-            let outputURL = makeTemporaryOutputURL(for: inputURL)
             try PocketModImposer.impose(
                 inputURL: inputURL,
                 outputURL: outputURL,
@@ -105,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             log("Created PocketMod: \(outputURL.path)")
             openOutput(outputURL)
         } catch {
+            try? FileManager.default.removeItem(at: outputURL)
             log("Imposition failed: \(error.localizedDescription)")
             showError(error.localizedDescription) {
                 self.finishOne()
@@ -231,6 +234,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showError(message) {
             NSApp.terminate(nil)
         }
+    }
+
+    private func discardOversizedLog() {
+        guard let url = logURL,
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              size > 1_048_576 else {
+            return
+        }
+
+        try? Data().write(to: url, options: .atomic)
     }
 
     private func log(_ message: String) {
