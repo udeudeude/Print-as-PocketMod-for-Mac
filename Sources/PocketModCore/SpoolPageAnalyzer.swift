@@ -7,17 +7,20 @@ public struct PocketModSourceHint: Equatable, Sendable {
     public let rotationCorrectionDegrees: Int
     public let sourceSize: CGSize?
     public let method: String
+    public let debugDescription: String
 
     public init(
         isLandscape: Bool,
         rotationCorrectionDegrees: Int,
         sourceSize: CGSize?,
-        method: String
+        method: String,
+        debugDescription: String = ""
     ) {
         self.isLandscape = isLandscape
         self.rotationCorrectionDegrees = rotationCorrectionDegrees
         self.sourceSize = sourceSize
         self.method = method
+        self.debugDescription = debugDescription
     }
 }
 
@@ -47,6 +50,14 @@ private struct PDFMatrix {
             x: a * point.x + c * point.y + tx,
             y: b * point.x + d * point.y + ty
         )
+    }
+
+    var scaleX: CGFloat {
+        hypot(a, b)
+    }
+
+    var scaleY: CGFloat {
+        hypot(c, d)
     }
 
     var snappedQuarterTurn: Int? {
@@ -109,6 +120,8 @@ private final class SpoolScannerState {
     var stack: [PDFMatrix] = []
     var lastRectangle: CGRect?
     var candidates: [SpoolCandidate] = []
+    var contentTransforms: [PDFMatrix] = []
+    var matrixEvents: [PDFMatrix] = []
     let spoolSize: CGSize
 
     init(spoolSize: CGSize) {
@@ -184,6 +197,17 @@ private let concatMatrixCallback: CGPDFOperatorCallback = { scanner, info in
 
     let matrix = PDFMatrix(a: a, b: b, c: c, d: d, tx: e, ty: f)
     state.ctm = state.ctm.followed(by: matrix)
+    state.matrixEvents.append(state.ctm)
+}
+
+private let beginTextCallback: CGPDFOperatorCallback = { _, info in
+    guard let state = scannerState(info) else { return }
+    state.contentTransforms.append(state.ctm)
+}
+
+private let paintPathCallback: CGPDFOperatorCallback = { _, info in
+    guard let state = scannerState(info) else { return }
+    state.contentTransforms.append(state.ctm)
 }
 
 private let rectangleCallback: CGPDFOperatorCallback = { scanner, info in
@@ -284,6 +308,7 @@ private let drawXObjectCallback: CGPDFOperatorCallback = { scanner, info in
     }
 
     let combined = state.ctm.followed(by: formMatrix)
+    state.contentTransforms.append(combined)
     state.addCandidate(
         sourceSize: CGSize(width: abs(bbox.width), height: abs(bbox.height)),
         transform: combined,
@@ -298,7 +323,8 @@ public enum PocketModSpoolAnalyzer {
             isLandscape: fallbackLandscape,
             rotationCorrectionDegrees: 0,
             sourceSize: nil,
-            method: "page-box"
+            method: "page-box",
+            debugDescription: ""
         )
 
         guard let pageRef = page.pageRef else { return fallback }
@@ -312,6 +338,16 @@ public enum PocketModSpoolAnalyzer {
         CGPDFOperatorTableSetCallback(table, "q", saveStateCallback)
         CGPDFOperatorTableSetCallback(table, "Q", restoreStateCallback)
         CGPDFOperatorTableSetCallback(table, "cm", concatMatrixCallback)
+        CGPDFOperatorTableSetCallback(table, "BT", beginTextCallback)
+        CGPDFOperatorTableSetCallback(table, "S", paintPathCallback)
+        CGPDFOperatorTableSetCallback(table, "s", paintPathCallback)
+        CGPDFOperatorTableSetCallback(table, "f", paintPathCallback)
+        CGPDFOperatorTableSetCallback(table, "F", paintPathCallback)
+        CGPDFOperatorTableSetCallback(table, "f*", paintPathCallback)
+        CGPDFOperatorTableSetCallback(table, "B", paintPathCallback)
+        CGPDFOperatorTableSetCallback(table, "B*", paintPathCallback)
+        CGPDFOperatorTableSetCallback(table, "b", paintPathCallback)
+        CGPDFOperatorTableSetCallback(table, "b*", paintPathCallback)
         CGPDFOperatorTableSetCallback(table, "re", rectangleCallback)
         CGPDFOperatorTableSetCallback(table, "W", clipCallback)
         CGPDFOperatorTableSetCallback(table, "W*", clipCallback)
@@ -333,21 +369,54 @@ public enum PocketModSpoolAnalyzer {
         }!
 
         let sourceSize = candidate.sourceSize
-        let longer = max(sourceSize.width, sourceSize.height)
-        let shorter = min(sourceSize.width, sourceSize.height)
-        let nearlySquare = longer > 0 && abs(longer - shorter) / longer < 0.02
-        let isLandscape = !nearlySquare && sourceSize.width > sourceSize.height * 1.02
+
+        let transformedContent = state.contentTransforms.filter {
+            guard let turn = $0.snappedQuarterTurn else { return false }
+            return turn == 90 || turn == 270
+        }
+
+        let strongestTurn = transformedContent.max {
+            max($0.scaleX, $0.scaleY) < max($1.scaleX, $1.scaleY)
+        }
+
+        let turn = strongestTurn?.snappedQuarterTurn
+        let scaleX = strongestTurn?.scaleX ?? 0
+        let scaleY = strongestTurn?.scaleY ?? 0
+        let uniformScale = max(scaleX, scaleY)
+
+        // Preview's print pipeline uses a near-1.0 scale for Letter-sized
+        // landscape pages rotated into the portrait spool. Much smaller
+        // quarter-turn scales indicate an oversized source page such as a
+        // large square being reduced to fit.
+        let rotatedContent = turn == 90 || turn == 270
+        let oversizedRotatedSource = rotatedContent && uniformScale > 0 && uniformScale < 0.80
+        let isLandscape = rotatedContent && !oversizedRotatedSource
 
         var correction = 0
-        if nearlySquare, let turn = candidate.quarterTurn, turn == 90 || turn == 270 {
+        if oversizedRotatedSource, let turn {
             correction = (360 - turn) % 360
         }
+
+        let matrixSummary = state.matrixEvents.suffix(12).map {
+            "a=\(String(format: "%.3f", $0.a)),b=\(String(format: "%.3f", $0.b))," +
+            "c=\(String(format: "%.3f", $0.c)),d=\(String(format: "%.3f", $0.d))," +
+            "sx=\(String(format: "%.3f", $0.scaleX)),sy=\(String(format: "%.3f", $0.scaleY))," +
+            "turn=\($0.snappedQuarterTurn.map(String.init) ?? "nil")"
+        }.joined(separator: " | ")
+
+        let contentSummary = state.contentTransforms.suffix(12).map {
+            "sx=\(String(format: "%.3f", $0.scaleX)),sy=\(String(format: "%.3f", $0.scaleY))," +
+            "turn=\($0.snappedQuarterTurn.map(String.init) ?? "nil")"
+        }.joined(separator: " | ")
 
         return PocketModSourceHint(
             isLandscape: isLandscape,
             rotationCorrectionDegrees: correction,
             sourceSize: sourceSize,
-            method: candidate.kind + "-content-stream"
+            method: rotatedContent ? "content-transform" : candidate.kind + "-content-stream",
+            debugDescription:
+                "selectedClip=\(Int(sourceSize.width))x\(Int(sourceSize.height)); " +
+                "content=[\(contentSummary)]; matrices=[\(matrixSummary)]"
         )
     }
 }
