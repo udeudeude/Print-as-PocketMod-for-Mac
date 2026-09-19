@@ -14,7 +14,9 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-14
+    # Build on Intel so the same runner can cross-compile both Intel and
+    # Apple Silicon slices, then combine them into one universal app.
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -32,15 +34,33 @@ jobs:
           zsh -n scripts/uninstall.sh
           zsh -n scripts/package-release.sh
 
-      - name: Build and test
+      - name: Test
+        run: swift test
+
+      - name: Build universal app
         run: |
-          swift test
-          swift build -c release --product PocketModApp
+          X86_BUILD=".build-release-x86_64"
+          ARM_BUILD=".build-release-arm64"
+
+          swift build -c release --arch x86_64 --product PocketModApp --build-path "$X86_BUILD"
+          swift build -c release --arch arm64 --product PocketModApp --build-path "$ARM_BUILD"
+
+          X86_DIR="$(swift build -c release --arch x86_64 --build-path "$X86_BUILD" --show-bin-path)"
+          ARM_DIR="$(swift build -c release --arch arm64 --build-path "$ARM_BUILD" --show-bin-path)"
+          UNIVERSAL_BINARY="$RUNNER_TEMP/PocketModApp-universal"
+
+          lipo -create "$X86_DIR/PocketModApp" "$ARM_DIR/PocketModApp" -output "$UNIVERSAL_BINARY"
+
+          ARCHS="$(lipo -archs "$UNIVERSAL_BINARY")"
+          echo "Universal architectures: $ARCHS"
+          [[ "$ARCHS" == *x86_64* ]]
+          [[ "$ARCHS" == *arm64* ]]
+          echo "UNIVERSAL_BINARY=$UNIVERSAL_BINARY" >> "$GITHUB_ENV"
 
       - name: Package
-        run: zsh scripts/package-release.sh
+        run: POCKETMOD_BUILD="$UNIVERSAL_BINARY" zsh scripts/package-release.sh
 
-      - name: Verify package
+      - name: Verify packaged installer
         run: |
           test -f "$ASSET"
           VERIFY_DIR="$RUNNER_TEMP/release-verify"
@@ -49,18 +69,33 @@ jobs:
           ditto -x -k "$ASSET" "$VERIFY_DIR"
 
           DIST="$VERIFY_DIR/Print-as-PocketMod-for-Mac-v$VERSION"
-          test -x "$DIST/Print as PocketMod.app/Contents/MacOS/PocketModApp"
+          APP="$DIST/Print as PocketMod.app"
+          test -x "$APP/Contents/MacOS/PocketModApp"
           test -x "$DIST/Install.command"
           test -x "$DIST/Uninstall.command"
           zsh -n "$DIST/Install.command"
           zsh -n "$DIST/Uninstall.command"
 
-          grep -q 'MODE=--plain' "$DIST/Install.command"
-          grep -q 'MODE=--guides' "$DIST/Install.command"
-          grep -q -- '--args "$MODE"' "$DIST/Install.command"
+          ARCHS="$(lipo -archs "$APP/Contents/MacOS/PocketModApp")"
+          [[ "$ARCHS" == *x86_64* ]]
+          [[ "$ARCHS" == *arm64* ]]
 
-          PACKAGED_VERSION="$(plutil -extract CFBundleShortVersionString raw "$DIST/Print as PocketMod.app/Contents/Info.plist")"
+          PACKAGED_VERSION="$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")"
           test "$PACKAGED_VERSION" = "$VERSION"
+
+          INSTALL_HOME="$RUNNER_TEMP/release-install-home"
+          rm -rf "$INSTALL_HOME"
+          mkdir -p "$INSTALL_HOME"
+          printf 'x' | HOME="$INSTALL_HOME" zsh "$DIST/Install.command"
+
+          test -x "$INSTALL_HOME/Applications/Print as PocketMod.app/Contents/MacOS/PocketModApp"
+          test -x "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
+          test -x "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
+          zsh -n "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
+          zsh -n "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
+          grep -q 'MODE=--plain' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
+          grep -q 'MODE=--guides' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
+          grep -q -- '--args "$MODE"' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
 
       - name: Publish current version
         env:
@@ -68,7 +103,7 @@ jobs:
         run: |
           NOTES="Print as PocketMod $VERSION
 
-          Adds reliable mixed-orientation PocketMod imposition, oversized-square handling without Desktop-folder access, optional fold/cut guides, temporary-output cleanup, and a prebuilt double-click installer."
+          Reliable mixed-orientation PocketMod imposition, oversized-square handling without Desktop-folder access, optional fold/cut guides, temporary-output cleanup, and a universal Intel/Apple-Silicon double-click installer."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ASSET" --clobber
