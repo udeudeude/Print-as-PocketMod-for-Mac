@@ -4,11 +4,6 @@ import PDFKit
 struct PocketModSourceHint: Equatable {
     let isLandscape: Bool
     let rotationCorrectionDegrees: Int
-
-    init(isLandscape: Bool, rotationCorrectionDegrees: Int) {
-        self.isLandscape = isLandscape
-        self.rotationCorrectionDegrees = rotationCorrectionDegrees
-    }
 }
 
 private struct PDFMatrix {

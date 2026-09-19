@@ -182,7 +182,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func finishOne() {
         precondition(Thread.isMainThread)
 
-        pendingJobs = max(0, pendingJobs - 1)
+        guard pendingJobs > 0 else {
+            return
+        }
+        pendingJobs -= 1
+
         guard pendingJobs == 0 else {
             return
         }
@@ -224,20 +228,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showFatalError(_ message: String) {
-        let present = {
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.alertStyle = .critical
-            alert.messageText = "Print as PocketMod"
-            alert.informativeText = message
-            alert.runModal()
+        showError(message) {
             NSApp.terminate(nil)
-        }
-
-        if Thread.isMainThread {
-            present()
-        } else {
-            DispatchQueue.main.async(execute: present)
         }
     }
 

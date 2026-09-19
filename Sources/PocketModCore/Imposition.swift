@@ -7,7 +7,7 @@ enum PocketModError: LocalizedError {
     case emptyPDF
     case cannotCreateOutput(URL)
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .unreadablePDF(let url):
             return "Could not open PDF: \(url.path)"
@@ -19,22 +19,15 @@ enum PocketModError: LocalizedError {
     }
 }
 
-struct PocketModPlacement: Equatable {
+struct PocketModPlacement {
     let pageIndex: Int?
     let column: Int
     let row: Int
     let rotationDegrees: Int
-
-    init(pageIndex: Int?, column: Int, row: Int, rotationDegrees: Int) {
-        self.pageIndex = pageIndex
-        self.column = column
-        self.row = row
-        self.rotationDegrees = rotationDegrees
-    }
 }
 
 enum PocketModLayout {
-    static let sourceOrder = [0, 7, 6, 5, 1, 2, 3, 4]
+    private static let sourceOrder = [0, 7, 6, 5, 1, 2, 3, 4]
 
     static func placements(startingAt basePage: Int, pageCount: Int) -> [PocketModPlacement] {
         sourceOrder.enumerated().map { slot, relativePage in
@@ -51,8 +44,9 @@ enum PocketModLayout {
 
 public enum PocketModImposer {
     static func extraRotationDegrees(pageIndex: Int, isLandscape: Bool) -> Int {
-        let isOddNumberedPage = pageIndex.isMultiple(of: 2)
-        return isOddNumberedPage && isLandscape ? 180 : 0
+        // A zero-based even index is an odd human-facing page number.
+        let isOddPageNumber = pageIndex.isMultiple(of: 2)
+        return isOddPageNumber && isLandscape ? 180 : 0
     }
 
     static func sourceIsLandscape(page: PDFPage) -> Bool {
