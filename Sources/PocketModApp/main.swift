@@ -3,6 +3,11 @@ import Foundation
 import PDFKit
 import PocketModCore
 
+private struct SourcePageHints {
+    let landscape: [Bool]
+    let rotationCorrections: [Int]
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingJobs = 0
     private var receivedOpenEvent = false
@@ -51,8 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
-        let landscapeHints = recoverLandscapeHintsFromPreview(spoolURL: inputURL)
-        logPageDiagnostics(inputURL, landscapeHints: landscapeHints)
+        let sourceHints = recoverSourceHintsFromPreview(spoolURL: inputURL)
+        logPageDiagnostics(inputURL, sourceHints: sourceHints)
 
         do {
             let outputURL = makeTemporaryOutputURL(for: inputURL)
@@ -60,7 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 inputURL: inputURL,
                 outputURL: outputURL,
                 includeGuides: includeGuides,
-                landscapeHints: landscapeHints
+                landscapeHints: sourceHints?.landscape,
+                sourceRotationCorrections: sourceHints?.rotationCorrections
             )
             temporaryOutputs.append(outputURL)
             log("Created PocketMod: \(outputURL.path)")
@@ -102,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func logPageDiagnostics(_ inputURL: URL, landscapeHints: [Bool]?) {
+    private func logPageDiagnostics(_ inputURL: URL, sourceHints: SourcePageHints?) {
         guard let document = PDFDocument(url: inputURL) else {
             log("Could not inspect PDF for diagnostics")
             return
@@ -122,9 +128,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let raw = page.pageRef?.getBoxRect(.cropBox) ?? kit
                 let rawRotation = page.pageRef.map { Int($0.rotationAngle) } ?? page.rotation
                 let spoolLandscape = PocketModImposer.sourceIsLandscape(page: page)
-                let sourceHint = landscapeHints.flatMap {
-                    pageIndex < $0.count ? $0[pageIndex] : nil
+                let sourceHint = sourceHints.flatMap {
+                    pageIndex < $0.landscape.count ? $0.landscape[pageIndex] : nil
                 }
+                let rotationCorrection = sourceHints.flatMap {
+                    pageIndex < $0.rotationCorrections.count ? $0.rotationCorrections[pageIndex] : nil
+                } ?? 0
                 let effectiveLandscape = sourceHint ?? spoolLandscape
                 let extra = PocketModImposer.extraRotationDegrees(
                     pageIndex: pageIndex,
@@ -133,7 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let total = PocketModImposer.totalRotationDegrees(
                     pageIndex: pageIndex,
                     placementRotationDegrees: placement.rotationDegrees,
-                    isLandscape: effectiveLandscape
+                    isLandscape: effectiveLandscape,
+                    sourceRotationCorrectionDegrees: rotationCorrection
                 )
 
                 log(
@@ -141,13 +151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     "raw=\(Int(raw.width))x\(Int(raw.height)) rawRotation=\(rawRotation) " +
                     "spoolLandscape=\(spoolLandscape) sourceHint=\(String(describing: sourceHint)) " +
                     "effectiveLandscape=\(effectiveLandscape) panelRotation=\(placement.rotationDegrees) " +
-                    "extraRotation=\(extra) totalRotation=\(total)"
+                    "extraRotation=\(extra) sourceCorrection=\(rotationCorrection) totalRotation=\(total)"
                 )
             }
         }
     }
 
-    private func recoverLandscapeHintsFromPreview(spoolURL: URL) -> [Bool]? {
+    private func recoverSourceHintsFromPreview(spoolURL: URL) -> SourcePageHints? {
         guard let spoolDocument = PDFDocument(url: spoolURL) else {
             log("Could not open spool PDF while looking for source orientation hints")
             return nil
@@ -192,16 +202,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        let hints = (0..<sourceDocument.pageCount).map { index -> Bool in
-            guard let page = sourceDocument.page(at: index) else { return false }
-            return PocketModImposer.sourceIsLandscape(page: page)
+        guard let referencePage = sourceDocument.page(at: 0) else {
+            log("Original PDF has no first page for source-size comparison")
+            return nil
+        }
+
+        let referenceBounds = referencePage.bounds(for: .cropBox)
+        let referenceLongSide = max(referenceBounds.width, referenceBounds.height)
+
+        var landscape: [Bool] = []
+        var rotationCorrections: [Int] = []
+        var oversizedSquarePages: [String] = []
+
+        for index in 0..<sourceDocument.pageCount {
+            guard let page = sourceDocument.page(at: index) else {
+                landscape.append(false)
+                rotationCorrections.append(0)
+                continue
+            }
+
+            let bounds = page.bounds(for: .cropBox)
+            let longSide = max(bounds.width, bounds.height)
+            let shortSide = min(bounds.width, bounds.height)
+            let isSquare = longSide > 0 && abs(longSide - shortSide) / longSide < 0.01
+            let isOversizedSquare = isSquare && longSide > referenceLongSide * 1.05
+
+            landscape.append(PocketModImposer.sourceIsLandscape(page: page))
+
+            // Preview's Print dialog quarter-turns oversized square pages while
+            // fitting them to a portrait spool page. Counter that turn before
+            // applying the normal PocketMod panel rotation.
+            if isOversizedSquare {
+                rotationCorrections.append(270)
+                oversizedSquarePages.append(String(index + 1))
+            } else {
+                rotationCorrections.append(0)
+            }
         }
 
         log(
             "Recovered source orientation from Preview: \(best.url.path) " +
-            "landscapePages=\(hints.enumerated().compactMap { $0.element ? String($0.offset + 1) : nil }.joined(separator: ","))"
+            "landscapePages=\(landscape.enumerated().compactMap { $0.element ? String($0.offset + 1) : nil }.joined(separator: ",")) " +
+            "oversizedSquarePages=\(oversizedSquarePages.joined(separator: ","))"
         )
-        return hints
+        return SourcePageHints(
+            landscape: landscape,
+            rotationCorrections: rotationCorrections
+        )
     }
 
     private func openPDFs(forProcessIdentifier processIdentifier: pid_t) -> [URL] {
