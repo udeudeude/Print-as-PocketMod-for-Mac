@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$ROOT/Resources/Info.plist"
 VERSION="$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$PLIST")"
-BUILD="$ROOT/.build/release/PocketModApp"
+BUILD="${POCKETMOD_BUILD:-$ROOT/.build/release/PocketModApp}"
 DIST_NAME="Print-as-PocketMod-for-Mac-v$VERSION"
 DIST="$ROOT/dist/$DIST_NAME"
 ZIP="$ROOT/dist/$DIST_NAME.zip"
