@@ -122,6 +122,7 @@ private final class SpoolScannerState {
     var candidates: [SpoolCandidate] = []
     var contentTransforms: [PDFMatrix] = []
     var matrixEvents: [PDFMatrix] = []
+    var textMatrix = PDFMatrix.identity
     let spoolSize: CGSize
 
     init(spoolSize: CGSize) {
@@ -202,7 +203,29 @@ private let concatMatrixCallback: CGPDFOperatorCallback = { scanner, info in
 
 private let beginTextCallback: CGPDFOperatorCallback = { _, info in
     guard let state = scannerState(info) else { return }
-    state.contentTransforms.append(state.ctm)
+    state.textMatrix = .identity
+}
+
+private let textMatrixCallback: CGPDFOperatorCallback = { scanner, info in
+    guard
+        let state = scannerState(info),
+        let f = popNumber(scanner),
+        let e = popNumber(scanner),
+        let d = popNumber(scanner),
+        let c = popNumber(scanner),
+        let b = popNumber(scanner),
+        let a = popNumber(scanner)
+    else {
+        return
+    }
+
+    state.textMatrix = PDFMatrix(a: a, b: b, c: c, d: d, tx: e, ty: f)
+    state.contentTransforms.append(state.ctm.followed(by: state.textMatrix))
+}
+
+private let showTextCallback: CGPDFOperatorCallback = { _, info in
+    guard let state = scannerState(info) else { return }
+    state.contentTransforms.append(state.ctm.followed(by: state.textMatrix))
 }
 
 private let paintPathCallback: CGPDFOperatorCallback = { _, info in
@@ -282,11 +305,31 @@ private let drawXObjectCallback: CGPDFOperatorCallback = { scanner, info in
     var subtypePointer: UnsafePointer<CChar>?
     guard
         CGPDFDictionaryGetName(dictionary, "Subtype", &subtypePointer),
-        let subtypePointer,
-        String(cString: subtypePointer) == "Form"
+        let subtypePointer
     else {
         return
     }
+
+    let subtype = String(cString: subtypePointer)
+
+    if subtype == "Image" {
+        state.contentTransforms.append(state.ctm)
+
+        var width: CGPDFInteger = 0
+        var height: CGPDFInteger = 0
+        if CGPDFDictionaryGetInteger(dictionary, "Width", &width),
+           CGPDFDictionaryGetInteger(dictionary, "Height", &height),
+           width > 0, height > 0 {
+            state.addCandidate(
+                sourceSize: CGSize(width: CGFloat(width), height: CGFloat(height)),
+                transform: state.ctm,
+                kind: "image"
+            )
+        }
+        return
+    }
+
+    guard subtype == "Form" else { return }
 
     var bboxArray: CGPDFArrayRef?
     guard
@@ -339,6 +382,11 @@ public enum PocketModSpoolAnalyzer {
         CGPDFOperatorTableSetCallback(table, "Q", restoreStateCallback)
         CGPDFOperatorTableSetCallback(table, "cm", concatMatrixCallback)
         CGPDFOperatorTableSetCallback(table, "BT", beginTextCallback)
+        CGPDFOperatorTableSetCallback(table, "Tm", textMatrixCallback)
+        CGPDFOperatorTableSetCallback(table, "Tj", showTextCallback)
+        CGPDFOperatorTableSetCallback(table, "TJ", showTextCallback)
+        CGPDFOperatorTableSetCallback(table, "'", showTextCallback)
+        CGPDFOperatorTableSetCallback(table, "\"", showTextCallback)
         CGPDFOperatorTableSetCallback(table, "S", paintPathCallback)
         CGPDFOperatorTableSetCallback(table, "s", paintPathCallback)
         CGPDFOperatorTableSetCallback(table, "f", paintPathCallback)
