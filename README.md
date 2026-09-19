@@ -26,7 +26,7 @@ The top four panels are rotated 180 degrees. Documents longer than eight pages b
 
 ### Easiest: prebuilt release
 
-Download the latest release ZIP from GitHub, unzip it, and double-click `Install.command`.
+Download the latest release ZIP from GitHub, unzip it, and double-click `Install.command`. The prebuilt helper app is universal and supports both Intel and Apple Silicon Macs.
 
 Because the current release is not Apple-notarized, macOS may require **right-click -> Open** the first time.
 
@@ -58,7 +58,7 @@ and installs a PDF workflow item at:
 2. Choose **File -> Print**.
 3. Open the **PDF** menu at the bottom of the print dialog.
 4. Choose **Print as PocketMod** for a clean sheet, or **Print as PocketMod with Guides** for dashed fold lines plus the center cut line.
-5. The imposed PDF opens in your default PDF viewer.
+5. The imposed PDF opens in Preview.
 6. Inspect it, then print it at 100% / Actual Size unless your printer requires otherwise.
 
 The generated PDF is temporary and is removed automatically after the viewer has had time to open it. It becomes permanent only if you explicitly save it from the viewer. Stale temporary files left by a crash are cleaned up automatically on a later run.
@@ -92,7 +92,8 @@ Current implementation includes:
 
 - clean PocketMod output
 - optional fold/cut guide output as a second Print-menu command
-- portrait/landscape handling, including odd-page landscape correction
+- mixed portrait/landscape handling, including odd-page landscape correction
+- oversized square-page handling recovered from the print spool without reading the original Desktop/Documents file
 - multiple PocketMod sheets for documents longer than eight pages
 - automatic cleanup of temporary output
 - a prebuilt release ZIP with double-clickable install/uninstall commands
