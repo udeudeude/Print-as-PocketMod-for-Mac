@@ -51,14 +51,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
-        logPageDiagnostics(inputURL)
+        let landscapeHints = recoverLandscapeHintsFromPreview(spoolURL: inputURL)
+        logPageDiagnostics(inputURL, landscapeHints: landscapeHints)
 
         do {
             let outputURL = makeTemporaryOutputURL(for: inputURL)
             try PocketModImposer.impose(
                 inputURL: inputURL,
                 outputURL: outputURL,
-                includeGuides: includeGuides
+                includeGuides: includeGuides,
+                landscapeHints: landscapeHints
             )
             temporaryOutputs.append(outputURL)
             log("Created PocketMod: \(outputURL.path)")
@@ -100,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func logPageDiagnostics(_ inputURL: URL) {
+    private func logPageDiagnostics(_ inputURL: URL, landscapeHints: [Bool]?) {
         guard let document = PDFDocument(url: inputURL) else {
             log("Could not inspect PDF for diagnostics")
             return
@@ -119,25 +121,136 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let kit = page.bounds(for: .cropBox)
                 let raw = page.pageRef?.getBoxRect(.cropBox) ?? kit
                 let rawRotation = page.pageRef.map { Int($0.rotationAngle) } ?? page.rotation
-                let landscape = PocketModImposer.sourceIsLandscape(page: page)
+                let spoolLandscape = PocketModImposer.sourceIsLandscape(page: page)
+                let sourceHint = landscapeHints.flatMap {
+                    pageIndex < $0.count ? $0[pageIndex] : nil
+                }
+                let effectiveLandscape = sourceHint ?? spoolLandscape
                 let extra = PocketModImposer.extraRotationDegrees(
                     pageIndex: pageIndex,
-                    isLandscape: landscape
+                    isLandscape: effectiveLandscape
                 )
                 let total = PocketModImposer.totalRotationDegrees(
                     pageIndex: pageIndex,
                     placementRotationDegrees: placement.rotationDegrees,
-                    isLandscape: landscape
+                    isLandscape: effectiveLandscape
                 )
 
                 log(
                     "page=\(pageIndex + 1) kit=\(Int(kit.width))x\(Int(kit.height)) " +
                     "raw=\(Int(raw.width))x\(Int(raw.height)) rawRotation=\(rawRotation) " +
-                    "landscape=\(landscape) panelRotation=\(placement.rotationDegrees) " +
+                    "spoolLandscape=\(spoolLandscape) sourceHint=\(String(describing: sourceHint)) " +
+                    "effectiveLandscape=\(effectiveLandscape) panelRotation=\(placement.rotationDegrees) " +
                     "extraRotation=\(extra) totalRotation=\(total)"
                 )
             }
         }
+    }
+
+    private func recoverLandscapeHintsFromPreview(spoolURL: URL) -> [Bool]? {
+        guard let spoolDocument = PDFDocument(url: spoolURL) else {
+            log("Could not open spool PDF while looking for source orientation hints")
+            return nil
+        }
+
+        let spoolStem = normalizedPDFStem(spoolURL.lastPathComponent)
+        var candidates: [(url: URL, score: Int)] = []
+
+        for app in NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.Preview"
+        ) {
+            for url in openPDFs(forProcessIdentifier: app.processIdentifier) {
+                let path = url.path
+                if path.contains("com.apple.printtool.agent") ||
+                    path.contains("/PrintAsPocketMod-") ||
+                    path.contains("/PrintAsPocketMod.") {
+                    continue
+                }
+
+                guard let document = PDFDocument(url: url),
+                      document.pageCount == spoolDocument.pageCount else {
+                    continue
+                }
+
+                let candidateStem = normalizedPDFStem(url.lastPathComponent)
+                var score = 1
+
+                if candidateStem == spoolStem {
+                    score += 100
+                } else if spoolStem.contains(candidateStem) || candidateStem.contains(spoolStem) {
+                    score += 25
+                }
+
+                candidates.append((url, score))
+            }
+        }
+
+        guard let best = candidates.max(by: { $0.score < $1.score }),
+              best.score > 1 || candidates.count == 1,
+              let sourceDocument = PDFDocument(url: best.url) else {
+            log("No matching original PDF found in Preview; using print-spool geometry")
+            return nil
+        }
+
+        let hints = (0..<sourceDocument.pageCount).map { index -> Bool in
+            guard let page = sourceDocument.page(at: index) else { return false }
+            return PocketModImposer.sourceIsLandscape(page: page)
+        }
+
+        log(
+            "Recovered source orientation from Preview: \(best.url.path) " +
+            "landscapePages=\(hints.enumerated().compactMap { $0.element ? String($0.offset + 1) : nil }.joined(separator: ","))"
+        )
+        return hints
+    }
+
+    private func openPDFs(forProcessIdentifier processIdentifier: pid_t) -> [URL] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        process.arguments = ["-Fn", "-p", String(processIdentifier)]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            log("Could not run lsof for Preview: \(error.localizedDescription)")
+            return []
+        }
+
+        guard process.terminationStatus == 0 else {
+            log("lsof for Preview exited with status \(process.terminationStatus)")
+            return []
+        }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        guard let text = String(data: data, encoding: .utf8) else { return [] }
+
+        var seen = Set<String>()
+        return text
+            .split(separator: "\n")
+            .compactMap { line -> URL? in
+                guard line.first == "n" else { return nil }
+                let path = String(line.dropFirst())
+                guard path.hasPrefix("/"),
+                      path.lowercased().hasSuffix(".pdf"),
+                      FileManager.default.fileExists(atPath: path),
+                      seen.insert(path).inserted else {
+                    return nil
+                }
+                return URL(fileURLWithPath: path)
+            }
+    }
+
+    private func normalizedPDFStem(_ filename: String) -> String {
+        var name = filename.lowercased()
+        while name.hasSuffix(".pdf") {
+            name.removeLast(4)
+        }
+        return name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func makeTemporaryOutputURL(for inputURL: URL) -> URL {
