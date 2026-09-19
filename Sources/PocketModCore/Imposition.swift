@@ -85,7 +85,12 @@ public enum PocketModImposer {
         ) % 360
     }
 
-    public static func impose(inputURL: URL, outputURL: URL, includeGuides: Bool = false) throws {
+    public static func impose(
+        inputURL: URL,
+        outputURL: URL,
+        includeGuides: Bool = false,
+        landscapeHints: [Bool]? = nil
+    ) throws {
         guard let document = PDFDocument(url: inputURL) else {
             throw PocketModError.unreadablePDF(inputURL)
         }
@@ -120,7 +125,10 @@ public enum PocketModImposer {
                     pageIndex: pageIndex,
                     placement: placement,
                     in: context,
-                    sheetSize: mediaBox.size
+                    sheetSize: mediaBox.size,
+                    isLandscapeOverride: landscapeHints.flatMap {
+                        pageIndex < $0.count ? $0[pageIndex] : nil
+                    }
                 )
             }
 
@@ -166,7 +174,8 @@ public enum PocketModImposer {
         pageIndex: Int,
         placement: PocketModPlacement,
         in context: CGContext,
-        sheetSize: CGSize
+        sheetSize: CGSize,
+        isLandscapeOverride: Bool?
     ) {
         let cellWidth = sheetSize.width / 4
         let cellHeight = sheetSize.height / 2
@@ -177,7 +186,7 @@ public enum PocketModImposer {
         let pageBounds = page.bounds(for: .cropBox)
         guard pageBounds.width > 0, pageBounds.height > 0 else { return }
 
-        let isLandscape = sourceIsLandscape(page: page)
+        let isLandscape = isLandscapeOverride ?? sourceIsLandscape(page: page)
 
         let scale = min(cell.width / pageBounds.width, cell.height / pageBounds.height)
         let drawnSize = CGSize(width: pageBounds.width * scale, height: pageBounds.height * scale)
