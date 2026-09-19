@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$HOME/Applications/Print as PocketMod.app"
+SUPPORT="$HOME/Library/Application Support/Print as PocketMod"
+CLI="$SUPPORT/PocketModCLI"
 SERVICES="$HOME/Library/PDF Services"
 PLAIN="$SERVICES/Print as PocketMod"
 GUIDED="$SERVICES/Print as PocketMod with Guides"
@@ -10,13 +12,15 @@ GUIDED="$SERVICES/Print as PocketMod with Guides"
 echo "Building Print as PocketMod..."
 cd "$ROOT"
 /usr/bin/swift build -c release --product PocketModApp
+/usr/bin/swift build -c release --product PocketModCLI
 
-echo "Installing helper app..."
+echo "Installing helper app and direct converter..."
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$SUPPORT"
 cp "$ROOT/.build/release/PocketModApp" "$APP/Contents/MacOS/PocketModApp"
+cp "$ROOT/.build/release/PocketModCLI" "$CLI"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
-chmod 755 "$APP/Contents/MacOS/PocketModApp"
+chmod 755 "$APP/Contents/MacOS/PocketModApp" "$CLI"
 
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
@@ -39,7 +43,7 @@ write_service() {
     printf 'GUIDED=%q\n' "$guided"
     cat <<'SERVICE_EOF'
 
-APP="$HOME/Applications/Print as PocketMod.app"
+CLI="$HOME/Library/Application Support/Print as PocketMod/PocketModCLI"
 PDF="${3:-}"
 
 if [[ -z "$PDF" || ! -f "$PDF" ]]; then
@@ -52,15 +56,18 @@ if [[ -z "$PDF" || ! -f "$PDF" ]]; then
 fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
+[[ -x "$CLI" ]] || exit 1
+
+WORK_DIR="$(/usr/bin/mktemp -d /tmp/PrintAsPocketMod.XXXXXX)" || exit 1
+OUTPUT="$WORK_DIR/PocketMod.pdf"
 
 if [[ "$GUIDED" == "yes" ]]; then
-  GUIDE_DIR="$(/usr/bin/mktemp -d /tmp/PrintAsPocketModGuides.XXXXXX)" || exit 1
-  GUIDE_PDF="$GUIDE_DIR/PrintAsPocketModGuides.pdf"
-  /bin/cp "$PDF" "$GUIDE_PDF" || { /bin/rm -rf "$GUIDE_DIR"; exit 1; }
-  exec /usr/bin/open -n -a "$APP" "$GUIDE_PDF"
+  "$CLI" "$PDF" "$OUTPUT" --guides || exit $?
 else
-  exec /usr/bin/open -n -a "$APP" "$PDF"
+  "$CLI" "$PDF" "$OUTPUT" || exit $?
 fi
+
+exec /usr/bin/open -a Preview "$OUTPUT"
 SERVICE_EOF
   } > "$target"
 
