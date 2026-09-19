@@ -43,6 +43,18 @@ final class ImpositionTests: XCTestCase {
         )
     }
 
+    func testSourceQuarterTurnCorrectionCombinesWithPanelRotation() {
+        XCTAssertEqual(
+            PocketModImposer.totalRotationDegrees(
+                pageIndex: 6,
+                placementRotationDegrees: 180,
+                isLandscape: false,
+                sourceRotationCorrectionDegrees: 270
+            ),
+            90
+        )
+    }
+
     func testSheetCount() {
         XCTAssertEqual(PocketModLayout.sheetCount(for: 0), 0)
         XCTAssertEqual(PocketModLayout.sheetCount(for: 1), 1)
