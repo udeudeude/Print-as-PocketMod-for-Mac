@@ -8,7 +8,6 @@ let package = Package(
     products: [
         .library(name: "PocketModCore", targets: ["PocketModCore"]),
         .executable(name: "PocketModApp", targets: ["PocketModApp"]),
-        .executable(name: "PocketModCLI", targets: ["PocketModCLI"]),
     ],
     targets: [
         .target(
@@ -20,14 +19,6 @@ let package = Package(
         ),
         .executableTarget(
             name: "PocketModApp",
-            dependencies: ["PocketModCore"],
-            linkerSettings: [
-                .linkedFramework("PDFKit"),
-                .linkedFramework("AppKit"),
-            ]
-        ),
-        .executableTarget(
-            name: "PocketModCLI",
             dependencies: ["PocketModCore"],
             linkerSettings: [
                 .linkedFramework("PDFKit"),
