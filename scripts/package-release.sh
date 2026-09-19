@@ -86,8 +86,10 @@ write_service "$GUIDED" "--guides"
 echo
 echo "Installed Print as PocketMod."
 echo "Look under File -> Print -> PDF."
-read -k 1 "?Press any key to close..."
-echo
+if [[ -t 0 ]]; then
+  read -k 1 "?Press any key to close..."
+  echo
+fi
 INSTALL_EOF
 
 cat > "$DIST/Uninstall.command" <<'UNINSTALL_EOF'
@@ -99,8 +101,10 @@ rm -f "$HOME/Library/PDF Services/Print as PocketMod with Guides"
 rm -rf "$HOME/Applications/Print as PocketMod.app"
 
 echo "Removed Print as PocketMod."
-read -k 1 "?Press any key to close..."
-echo
+if [[ -t 0 ]]; then
+  read -k 1 "?Press any key to close..."
+  echo
+fi
 UNINSTALL_EOF
 
 cat > "$DIST/README.txt" <<README_EOF
