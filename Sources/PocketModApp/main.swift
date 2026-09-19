@@ -1,16 +1,18 @@
 import AppKit
 import Foundation
+import PDFKit
 import PocketModCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingJobs = 0
     private var receivedOpenEvent = false
     private var temporaryOutputs: [URL] = []
+    private let includeGuidesForLaunch = CommandLine.arguments.contains("--guides")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         cleanupStaleTemporaryFiles()
-        log("App launched")
+        log("App launched args=\(CommandLine.arguments.joined(separator: " | "))")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             if !self.receivedOpenEvent && self.pendingJobs == 0 {
@@ -33,9 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sender.reply(toOpenOrPrint: .success)
 
         for filename in filenames {
-            let inputURL = URL(fileURLWithPath: filename)
-            let includeGuides = isGuidedInput(inputURL)
-            process(inputURL: inputURL, includeGuides: includeGuides)
+            process(
+                inputURL: URL(fileURLWithPath: filename),
+                includeGuides: includeGuidesForLaunch
+            )
         }
     }
 
@@ -48,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
+        logPageDiagnostics(inputURL)
 
         do {
             let outputURL = makeTemporaryOutputURL(for: inputURL)
@@ -57,7 +61,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 includeGuides: includeGuides
             )
             temporaryOutputs.append(outputURL)
-            removeGuidedInputIfNeeded(inputURL)
             log("Created PocketMod: \(outputURL.path)")
 
             let configuration = NSWorkspace.OpenConfiguration()
@@ -92,22 +95,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } catch {
             log("Imposition failed: \(error.localizedDescription)")
-            removeGuidedInputIfNeeded(inputURL)
             showError(error.localizedDescription)
             finishedOne()
         }
     }
 
-    private func isGuidedInput(_ url: URL) -> Bool {
-        url.deletingLastPathComponent().lastPathComponent.hasPrefix("PrintAsPocketModGuides.")
-    }
-
-    private func removeGuidedInputIfNeeded(_ url: URL) {
-        let directory = url.deletingLastPathComponent()
-        guard directory.lastPathComponent.hasPrefix("PrintAsPocketModGuides.") else {
+    private func logPageDiagnostics(_ inputURL: URL) {
+        guard let document = PDFDocument(url: inputURL) else {
+            log("Could not inspect PDF for diagnostics")
             return
         }
-        try? FileManager.default.removeItem(at: directory)
+
+        for basePage in stride(from: 0, to: document.pageCount, by: 8) {
+            for placement in PocketModLayout.placements(
+                startingAt: basePage,
+                pageCount: document.pageCount
+            ) {
+                guard let pageIndex = placement.pageIndex,
+                      let page = document.page(at: pageIndex) else {
+                    continue
+                }
+
+                let kit = page.bounds(for: .cropBox)
+                let raw = page.pageRef?.getBoxRect(.cropBox) ?? kit
+                let rawRotation = page.pageRef.map { Int($0.rotationAngle) } ?? page.rotation
+                let landscape = PocketModImposer.sourceIsLandscape(page: page)
+                let extra = PocketModImposer.extraRotationDegrees(
+                    pageIndex: pageIndex,
+                    isLandscape: landscape
+                )
+                let total = PocketModImposer.totalRotationDegrees(
+                    pageIndex: pageIndex,
+                    placementRotationDegrees: placement.rotationDegrees,
+                    isLandscape: landscape
+                )
+
+                log(
+                    "page=\(pageIndex + 1) kit=\(Int(kit.width))x\(Int(kit.height)) " +
+                    "raw=\(Int(raw.width))x\(Int(raw.height)) rawRotation=\(rawRotation) " +
+                    "landscape=\(landscape) panelRotation=\(placement.rotationDegrees) " +
+                    "extraRotation=\(extra) totalRotation=\(total)"
+                )
+            }
+        }
     }
 
     private func makeTemporaryOutputURL(for inputURL: URL) -> URL {
