@@ -51,7 +51,7 @@ for basePage in stride(from: 0, to: document.pageCount, by: 8) {
 
         let kit = page.bounds(for: .cropBox)
         let raw = page.pageRef?.getBoxRect(.cropBox) ?? kit
-        let rawRotation = page.pageRef?.rotationAngle ?? page.rotation
+        let rawRotation = page.pageRef.map { Int($0.rotationAngle) } ?? page.rotation
         let landscape = PocketModImposer.sourceIsLandscape(page: page)
         let extra = PocketModImposer.extraRotationDegrees(
             pageIndex: pageIndex,
