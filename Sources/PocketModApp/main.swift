@@ -6,6 +6,8 @@ import PocketModCore
 private struct SourcePageHints {
     let landscape: [Bool]
     let rotationCorrections: [Int]
+    let methods: [String]
+    let sourceSizes: [CGSize?]
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -56,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
-        let sourceHints = recoverSourceHintsFromPreview(spoolURL: inputURL)
+        let sourceHints = recoverSourceHintsFromSpool(spoolURL: inputURL)
         logPageDiagnostics(inputURL, sourceHints: sourceHints)
 
         do {
@@ -134,6 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let rotationCorrection = sourceHints.flatMap {
                     pageIndex < $0.rotationCorrections.count ? $0.rotationCorrections[pageIndex] : nil
                 } ?? 0
+                let method = sourceHints.flatMap {
+                    pageIndex < $0.methods.count ? $0.methods[pageIndex] : nil
+                } ?? "none"
+                let sourceSize = sourceHints.flatMap {
+                    pageIndex < $0.sourceSizes.count ? $0.sourceSizes[pageIndex] : nil
+                } ?? nil
                 let effectiveLandscape = sourceHint ?? spoolLandscape
                 let extra = PocketModImposer.extraRotationDegrees(
                     pageIndex: pageIndex,
@@ -150,154 +158,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     "page=\(pageIndex + 1) kit=\(Int(kit.width))x\(Int(kit.height)) " +
                     "raw=\(Int(raw.width))x\(Int(raw.height)) rawRotation=\(rawRotation) " +
                     "spoolLandscape=\(spoolLandscape) sourceHint=\(String(describing: sourceHint)) " +
-                    "effectiveLandscape=\(effectiveLandscape) panelRotation=\(placement.rotationDegrees) " +
-                    "extraRotation=\(extra) sourceCorrection=\(rotationCorrection) totalRotation=\(total)"
+                    "sourceSize=\(sourceSize.map { "\(Int($0.width))x\(Int($0.height))" } ?? "nil") " +
+                    "hintMethod=\(method) effectiveLandscape=\(effectiveLandscape) " +
+                    "panelRotation=\(placement.rotationDegrees) extraRotation=\(extra) " +
+                    "sourceCorrection=\(rotationCorrection) totalRotation=\(total)"
                 )
             }
         }
     }
 
-    private func recoverSourceHintsFromPreview(spoolURL: URL) -> SourcePageHints? {
-        guard let spoolDocument = PDFDocument(url: spoolURL) else {
-            log("Could not open spool PDF while looking for source orientation hints")
+    private func recoverSourceHintsFromSpool(spoolURL: URL) -> SourcePageHints? {
+        guard let document = PDFDocument(url: spoolURL) else {
+            log("Could not inspect print spool PDF")
             return nil
         }
-
-        let spoolStem = normalizedPDFStem(spoolURL.lastPathComponent)
-        var candidates: [(url: URL, score: Int)] = []
-
-        for app in NSRunningApplication.runningApplications(
-            withBundleIdentifier: "com.apple.Preview"
-        ) {
-            for url in openPDFs(forProcessIdentifier: app.processIdentifier) {
-                let path = url.path
-                if path.contains("com.apple.printtool.agent") ||
-                    path.contains("/PrintAsPocketMod-") ||
-                    path.contains("/PrintAsPocketMod.") {
-                    continue
-                }
-
-                guard let document = PDFDocument(url: url),
-                      document.pageCount == spoolDocument.pageCount else {
-                    continue
-                }
-
-                let candidateStem = normalizedPDFStem(url.lastPathComponent)
-                var score = 1
-
-                if candidateStem == spoolStem {
-                    score += 100
-                } else if spoolStem.contains(candidateStem) || candidateStem.contains(spoolStem) {
-                    score += 25
-                }
-
-                candidates.append((url, score))
-            }
-        }
-
-        guard let best = candidates.max(by: { $0.score < $1.score }),
-              best.score > 1 || candidates.count == 1,
-              let sourceDocument = PDFDocument(url: best.url) else {
-            log("No matching original PDF found in Preview; using print-spool geometry")
-            return nil
-        }
-
-        guard let referencePage = sourceDocument.page(at: 0) else {
-            log("Original PDF has no first page for source-size comparison")
-            return nil
-        }
-
-        let referenceBounds = referencePage.bounds(for: .cropBox)
-        let referenceLongSide = max(referenceBounds.width, referenceBounds.height)
 
         var landscape: [Bool] = []
         var rotationCorrections: [Int] = []
-        var oversizedSquarePages: [String] = []
+        var methods: [String] = []
+        var sourceSizes: [CGSize?] = []
 
-        for index in 0..<sourceDocument.pageCount {
-            guard let page = sourceDocument.page(at: index) else {
+        for index in 0..<document.pageCount {
+            guard let page = document.page(at: index) else {
                 landscape.append(false)
                 rotationCorrections.append(0)
+                methods.append("missing-page")
+                sourceSizes.append(nil)
                 continue
             }
 
-            let bounds = page.bounds(for: .cropBox)
-            let longSide = max(bounds.width, bounds.height)
-            let shortSide = min(bounds.width, bounds.height)
-            let isSquare = longSide > 0 && abs(longSide - shortSide) / longSide < 0.01
-            let isOversizedSquare = isSquare && longSide > referenceLongSide * 1.05
-
-            landscape.append(PocketModImposer.sourceIsLandscape(page: page))
-
-            // Preview's Print dialog quarter-turns oversized square pages while
-            // fitting them to a portrait spool page. Fold testing establishes
-            // the required counter-turn direction for the resulting spool page.
-            if isOversizedSquare {
-                rotationCorrections.append(90)
-                oversizedSquarePages.append(String(index + 1))
-            } else {
-                rotationCorrections.append(0)
-            }
+            let hint = PocketModSpoolAnalyzer.hint(for: page)
+            landscape.append(hint.isLandscape)
+            rotationCorrections.append(hint.rotationCorrectionDegrees)
+            methods.append(hint.method)
+            sourceSizes.append(hint.sourceSize)
         }
+
+        let landscapePages = landscape.enumerated()
+            .compactMap { $0.element ? String($0.offset + 1) : nil }
+            .joined(separator: ",")
+        let correctedPages = rotationCorrections.enumerated()
+            .compactMap { $0.element != 0 ? "\($0.offset + 1):\($0.element)" : nil }
+            .joined(separator: ",")
 
         log(
-            "Recovered source orientation from Preview: \(best.url.path) " +
-            "landscapePages=\(landscape.enumerated().compactMap { $0.element ? String($0.offset + 1) : nil }.joined(separator: ",")) " +
-            "oversizedSquarePages=\(oversizedSquarePages.joined(separator: ","))"
+            "Recovered source geometry from spool content: " +
+            "landscapePages=\(landscapePages) quarterTurnCorrections=\(correctedPages)"
         )
+
         return SourcePageHints(
             landscape: landscape,
-            rotationCorrections: rotationCorrections
+            rotationCorrections: rotationCorrections,
+            methods: methods,
+            sourceSizes: sourceSizes
         )
-    }
-
-    private func openPDFs(forProcessIdentifier processIdentifier: pid_t) -> [URL] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        process.arguments = ["-Fn", "-p", String(processIdentifier)]
-
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            log("Could not run lsof for Preview: \(error.localizedDescription)")
-            return []
-        }
-
-        guard process.terminationStatus == 0 else {
-            log("lsof for Preview exited with status \(process.terminationStatus)")
-            return []
-        }
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard let text = String(data: data, encoding: .utf8) else { return [] }
-
-        var seen = Set<String>()
-        return text
-            .split(separator: "\n")
-            .compactMap { line -> URL? in
-                guard line.first == "n" else { return nil }
-                let path = String(line.dropFirst())
-                guard path.hasPrefix("/"),
-                      path.lowercased().hasSuffix(".pdf"),
-                      FileManager.default.fileExists(atPath: path),
-                      seen.insert(path).inserted else {
-                    return nil
-                }
-                return URL(fileURLWithPath: path)
-            }
-    }
-
-    private func normalizedPDFStem(_ filename: String) -> String {
-        var name = filename.lowercased()
-        while name.hasSuffix(".pdf") {
-            name.removeLast(4)
-        }
-        return name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func makeTemporaryOutputURL(for inputURL: URL) -> URL {
