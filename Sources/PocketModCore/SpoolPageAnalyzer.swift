@@ -63,7 +63,21 @@ private func angularDistance(_ lhs: CGFloat, _ rhs: CGFloat) -> CGFloat {
 private final class SpoolScannerState {
     var ctm = PDFMatrix.identity
     var stack: [PDFMatrix] = []
-    var matrixEvents: [PDFMatrix] = []
+    var bestQuarterTurn: Int?
+    var bestQuarterTurnScale: CGFloat = 0
+
+    func recordCurrentTransform() {
+        guard let turn = ctm.snappedQuarterTurn,
+              turn == 90 || turn == 270 else {
+            return
+        }
+
+        let scale = max(ctm.scaleX, ctm.scaleY)
+        if scale > bestQuarterTurnScale {
+            bestQuarterTurn = turn
+            bestQuarterTurnScale = scale
+        }
+    }
 }
 
 private func scannerState(_ info: UnsafeMutableRawPointer?) -> SpoolScannerState? {
@@ -102,7 +116,7 @@ private let concatMatrixCallback: CGPDFOperatorCallback = { scanner, info in
 
     let matrix = PDFMatrix(a: a, b: b, c: c, d: d, tx: e, ty: f)
     state.ctm = state.ctm.followed(by: matrix)
-    state.matrixEvents.append(state.ctm)
+    state.recordCurrentTransform()
 }
 
 public enum PocketModSpoolAnalyzer {
@@ -160,23 +174,13 @@ public enum PocketModSpoolAnalyzer {
 
         guard scanned else { return fallback }
 
-        let rotatedPageTransforms = state.matrixEvents.filter {
-            guard let turn = $0.snappedQuarterTurn else { return false }
-            return turn == 90 || turn == 270
-        }
-
-        // Preserve the working behavior established by fold testing: use the
-        // largest quarter-turned page-level transform. Nested drawing transforms
-        // are normally smaller than Preview's outer page-fit transform.
-        guard let pageTransform = rotatedPageTransforms.max(by: {
-            max($0.scaleX, $0.scaleY) < max($1.scaleX, $1.scaleY)
-        }) else {
+        guard let rotationDegrees = state.bestQuarterTurn else {
             return fallback
         }
 
         return hintForPageTransform(
-            rotationDegrees: pageTransform.snappedQuarterTurn,
-            scale: max(pageTransform.scaleX, pageTransform.scaleY),
+            rotationDegrees: rotationDegrees,
+            scale: state.bestQuarterTurnScale,
             fallbackLandscape: fallbackLandscape
         )
     }
