@@ -2,9 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="0.2.1"
+PLIST="$ROOT/Resources/Info.plist"
+VERSION="$(/usr/bin/plutil -extract CFBundleShortVersionString raw "$PLIST")"
 BUILD="$ROOT/.build/release/PocketModApp"
-DIST="$ROOT/dist/Print-as-PocketMod-for-Mac-v$VERSION"
+DIST_NAME="Print-as-PocketMod-for-Mac-v$VERSION"
+DIST="$ROOT/dist/$DIST_NAME"
+ZIP="$ROOT/dist/$DIST_NAME.zip"
 APP="$DIST/Print as PocketMod.app"
 
 if [[ ! -x "$BUILD" ]]; then
@@ -16,8 +19,15 @@ fi
 rm -rf "$ROOT/dist"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BUILD" "$APP/Contents/MacOS/PocketModApp"
-cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+cp "$PLIST" "$APP/Contents/Info.plist"
 chmod 755 "$APP/Contents/MacOS/PocketModApp"
+/usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
+
+# Ad-hoc signing keeps the bundle internally consistent. It is still not
+# notarized, so downloaded copies may require right-click -> Open.
+if [[ -x /usr/bin/codesign ]]; then
+  /usr/bin/codesign --force --deep --sign - "$APP"
+fi
 
 cat > "$DIST/Install.command" <<'INSTALL_EOF'
 #!/bin/zsh
@@ -41,12 +51,12 @@ fi
 
 write_service() {
   local target="$1"
-  local guided="$2"
+  local mode="$2"
 
   {
     print -r -- '#!/bin/zsh'
     print -r -- 'set -u'
-    printf 'GUIDED=%q\n' "$guided"
+    printf 'MODE=%q\n' "$mode"
     cat <<'SERVICE_EOF'
 APP="$HOME/Applications/Print as PocketMod.app"
 PDF="${3:-}"
@@ -62,14 +72,7 @@ fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
 
-if [[ "$GUIDED" == "yes" ]]; then
-  GUIDE_DIR="$(/usr/bin/mktemp -d /tmp/PrintAsPocketModGuides.XXXXXX)" || exit 1
-  GUIDE_PDF="$GUIDE_DIR/PrintAsPocketModGuides.pdf"
-  /bin/cp "$PDF" "$GUIDE_PDF" || { /bin/rm -rf "$GUIDE_DIR"; exit 1; }
-  exec /usr/bin/open -n -a "$APP" "$GUIDE_PDF"
-else
-  exec /usr/bin/open -n -a "$APP" "$PDF"
-fi
+exec /usr/bin/open -n -a "$APP" "$PDF" --args "$MODE"
 SERVICE_EOF
   } > "$target"
 
@@ -77,8 +80,8 @@ SERVICE_EOF
   /bin/zsh -n "$target"
 }
 
-write_service "$PLAIN" "no"
-write_service "$GUIDED" "yes"
+write_service "$PLAIN" "--plain"
+write_service "$GUIDED" "--guides"
 
 echo
 echo "Installed Print as PocketMod."
@@ -90,16 +93,18 @@ INSTALL_EOF
 cat > "$DIST/Uninstall.command" <<'UNINSTALL_EOF'
 #!/bin/zsh
 set -euo pipefail
+
 rm -f "$HOME/Library/PDF Services/Print as PocketMod"
 rm -f "$HOME/Library/PDF Services/Print as PocketMod with Guides"
 rm -rf "$HOME/Applications/Print as PocketMod.app"
+
 echo "Removed Print as PocketMod."
 read -k 1 "?Press any key to close..."
 echo
 UNINSTALL_EOF
 
-cat > "$DIST/README.txt" <<'README_EOF'
-Print as PocketMod for Mac
+cat > "$DIST/README.txt" <<README_EOF
+Print as PocketMod for Mac v$VERSION
 
 INSTALL
 1. Double-click Install.command.
@@ -109,11 +114,13 @@ INSTALL
    - Print as PocketMod
    - Print as PocketMod with Guides
 
-The generated PocketMod is temporary unless you explicitly save it from your PDF viewer.
+The generated PocketMod opens in Preview and is temporary unless you explicitly save it.
 README_EOF
 
 chmod 755 "$DIST/Install.command" "$DIST/Uninstall.command"
+/bin/zsh -n "$DIST/Install.command"
+/bin/zsh -n "$DIST/Uninstall.command"
 
 cd "$ROOT/dist"
-/usr/bin/ditto -c -k --sequesterRsrc --keepParent "Print-as-PocketMod-for-Mac-v$VERSION" "Print-as-PocketMod-for-Mac-v$VERSION.zip"
-echo "$ROOT/dist/Print-as-PocketMod-for-Mac-v$VERSION.zip"
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$DIST_NAME" "$DIST_NAME.zip"
+echo "$ZIP"
