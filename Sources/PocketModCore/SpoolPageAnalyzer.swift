@@ -418,24 +418,31 @@ public enum PocketModSpoolAnalyzer {
 
         let sourceSize = candidate.sourceSize
 
-        let transformedContent = state.contentTransforms.filter {
+        // The outer graphics matrix is the reliable source-page fit transform.
+        // Text matrices also contain glyph/font scaling, so using them for page-scale
+        // classification makes an oversized square look falsely "large".
+        let rotatedPageTransforms = state.matrixEvents.filter {
             guard let turn = $0.snappedQuarterTurn else { return false }
             return turn == 90 || turn == 270
         }
 
-        let strongestTurn = transformedContent.max {
+        // Preview emits repeated copies of the same outer page transform. Prefer
+        // the largest page-level scale in case nested drawing operations add
+        // smaller transforms later.
+        let pageTransform = rotatedPageTransforms.max {
             max($0.scaleX, $0.scaleY) < max($1.scaleX, $1.scaleY)
         }
 
-        let turn = strongestTurn?.snappedQuarterTurn
-        let scaleX = strongestTurn?.scaleX ?? 0
-        let scaleY = strongestTurn?.scaleY ?? 0
+        let turn = pageTransform?.snappedQuarterTurn
+        let scaleX = pageTransform?.scaleX ?? 0
+        let scaleY = pageTransform?.scaleY ?? 0
         let uniformScale = max(scaleX, scaleY)
 
-        // Preview's print pipeline uses a near-1.0 scale for Letter-sized
-        // landscape pages rotated into the portrait spool. Much smaller
-        // quarter-turn scales indicate an oversized source page such as a
-        // large square being reduced to fit.
+        // In the observed Preview print spool:
+        // - normal landscape Letter pages rotate at about 0.96 scale
+        // - the oversized square page rotates at about 0.58 scale
+        // A conservative 0.80 boundary cleanly separates those cases while
+        // leaving unrotated portrait/small-square pages alone.
         let rotatedContent = turn == 90 || turn == 270
         let oversizedRotatedSource = rotatedContent && uniformScale > 0 && uniformScale < 0.80
         let isLandscape = rotatedContent && !oversizedRotatedSource
