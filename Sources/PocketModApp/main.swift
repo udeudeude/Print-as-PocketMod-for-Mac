@@ -9,7 +9,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var temporaryOutputs: [URL] = []
     private var terminationWorkItem: DispatchWorkItem?
 
-    private let includeGuidesForLaunch = CommandLine.arguments.contains("--guides")
     private let logFormatter = ISO8601DateFormatter()
 
     private lazy var outputDirectory: URL = {
@@ -55,19 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "unknown"
-        log(
-            "App launched version=\(version) build=\(build) " +
-            "args=\(CommandLine.arguments.joined(separator: " | "))"
-        )
-
-        if let launchInput = stagedCommandLineInputURL() {
-            receivedInput = true
-            process(
-                inputURL: launchInput,
-                includeGuides: includeGuidesForLaunch,
-                removeInputAfterProcessing: true
-            )
-        }
+        log("App launched version=\(version) build=\(build)")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             if !self.receivedInput && self.pendingJobs == 0 {
@@ -93,31 +80,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sender.reply(toOpenOrPrint: .success)
 
         for filename in filenames {
+            let inputURL = URL(fileURLWithPath: filename)
+            let stagedInput = inputURL.deletingLastPathComponent().lastPathComponent == "PrintAsPocketModInput"
+            let includeGuides = inputURL.lastPathComponent.hasPrefix("guides-")
+
             process(
-                inputURL: URL(fileURLWithPath: filename),
-                includeGuides: includeGuidesForLaunch,
-                removeInputAfterProcessing: false
+                inputURL: inputURL,
+                includeGuides: includeGuides,
+                removeInputAfterProcessing: stagedInput
             )
         }
-    }
-
-    private func stagedCommandLineInputURL() -> URL? {
-        let arguments = CommandLine.arguments
-        guard let marker = arguments.firstIndex(of: "--input") else {
-            return nil
-        }
-
-        let valueIndex = arguments.index(after: marker)
-        guard valueIndex < arguments.endIndex else {
-            return nil
-        }
-
-        let url = URL(fileURLWithPath: arguments[valueIndex])
-        guard url.pathExtension.lowercased() == "pdf",
-              FileManager.default.fileExists(atPath: url.path) else {
-            return nil
-        }
-        return url
     }
 
     private func process(

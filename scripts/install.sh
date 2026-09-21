@@ -80,13 +80,18 @@ fi
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
 
 # Copy the ephemeral print spool before returning control to printtool.agent.
-# The helper deletes this staged copy after it has finished reading the PDF.
+# The mode is encoded in the staged filename, so the helper needs only the
+# document-open event that LaunchServices reliably delivers.
 STAGING="${TMPDIR:-/tmp}/PrintAsPocketModInput"
 /bin/mkdir -p "$STAGING" || exit 1
-STAGED="$STAGING/$(/usr/bin/uuidgen).pdf"
+
+PREFIX="plain"
+[[ "$MODE" == "--guides" ]] && PREFIX="guides"
+
+STAGED="$STAGING/$PREFIX-$(/usr/bin/uuidgen).pdf"
 /bin/cp "$PDF" "$STAGED" || exit 1
 
-/usr/bin/open -n -a "$APP" --args "$MODE" --input "$STAGED"
+/usr/bin/open -n -a "$APP" "$STAGED"
 STATUS=$?
 if (( STATUS != 0 )); then
   /bin/rm -f "$STAGED"
