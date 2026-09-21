@@ -16,7 +16,9 @@ Release builds are universal binaries containing both Intel and Apple Silicon co
 
 ### Downloadable release
 
-1. Download the latest release ZIP from GitHub and unzip it.
+**[Download the latest release](https://github.com/udeudeude/Print-as-PocketMod-for-Mac/releases/latest)**
+
+1. Download the release ZIP and unzip it.
 2. Open **START HERE.html**.
 3. Double-click **Install Print as PocketMod.command**.
 4. If macOS says it cannot verify the developer, Control-click or right-click the installer, choose **Open**, then choose **Open** again.
