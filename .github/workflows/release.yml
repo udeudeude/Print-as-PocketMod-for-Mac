@@ -71,7 +71,7 @@ jobs:
       - name: Package
         run: POCKETMOD_BUILD="$UNIVERSAL_BINARY" zsh scripts/package-release.sh
 
-      - name: Verify packaged installer
+      - name: Verify downloadable package
         run: |
           test -f "$ASSET"
           VERIFY_DIR="$RUNNER_TEMP/release-verify"
@@ -79,13 +79,18 @@ jobs:
           mkdir -p "$VERIFY_DIR"
           ditto -x -k "$ASSET" "$VERIFY_DIR"
 
-          DIST="$VERIFY_DIR/Print-as-PocketMod-for-Mac-v$VERSION"
-          APP="$DIST/Print as PocketMod.app"
+          DIST="$VERIFY_DIR/Print as PocketMod $VERSION"
+          APP="$DIST/.payload/Print as PocketMod.app"
+          INSTALLER="$DIST/Install Print as PocketMod.command"
+          UNINSTALLER="$DIST/Uninstall Print as PocketMod.command"
+
+          test -f "$DIST/START HERE.html"
+          test -f "$DIST/LICENSE.txt"
           test -x "$APP/Contents/MacOS/PocketModApp"
-          test -x "$DIST/Install.command"
-          test -x "$DIST/Uninstall.command"
-          zsh -n "$DIST/Install.command"
-          zsh -n "$DIST/Uninstall.command"
+          test -x "$INSTALLER"
+          test -x "$UNINSTALLER"
+          zsh -n "$INSTALLER"
+          zsh -n "$UNINSTALLER"
 
           ARCHS="$(lipo -archs "$APP/Contents/MacOS/PocketModApp")"
           [[ "$ARCHS" == *x86_64* ]]
@@ -98,28 +103,38 @@ jobs:
           INSTALL_HOME="$RUNNER_TEMP/release-install-home"
           rm -rf "$INSTALL_HOME"
           mkdir -p "$INSTALL_HOME"
-          HOME="$INSTALL_HOME" zsh "$DIST/Install.command"
+          HOME="$INSTALL_HOME" zsh "$INSTALLER"
 
           test -x "$INSTALL_HOME/Applications/Print as PocketMod.app/Contents/MacOS/PocketModApp"
           test -x "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
           test -x "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
           zsh -n "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
           zsh -n "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
-          grep -q 'MODE=--plain' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
-          grep -q 'MODE=--guides' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
-          grep -q -- '--args "$MODE"' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
+          grep -q 'PREFIX="plain"' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
+          grep -q 'PREFIX="guides"' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
+          grep -q 'open -n -a "$APP" "$STAGED"' "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
 
-      - name: Publish current version
+          HOME="$INSTALL_HOME" zsh "$UNINSTALLER"
+          test ! -e "$INSTALL_HOME/Applications/Print as PocketMod.app"
+          test ! -e "$INSTALL_HOME/Library/PDF Services/Print as PocketMod"
+          test ! -e "$INSTALL_HOME/Library/PDF Services/Print as PocketMod with Guides"
+
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           NOTES="Print as PocketMod $VERSION
 
-          Reliable mixed-orientation PocketMod imposition, oversized-square handling without Desktop-folder access, optional fold/cut guides, temporary-output cleanup, and a universal Intel/Apple-Silicon double-click installer."
+          INSTALL
+          Download the ZIP, unzip it, and open START HERE.html. Then double-click “Install Print as PocketMod.command”.
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ASSET" --clobber
-            gh release edit "$TAG" --title "Print as PocketMod $TAG" --notes "$NOTES"
-          else
-            gh release create "$TAG" "$ASSET" --title "Print as PocketMod $TAG" --notes "$NOTES"
-          fi
+          If macOS cannot verify the developer, Control-click or right-click the installer, choose Open, then choose Open again.
+
+          COMPATIBILITY
+          macOS 13 or later. Universal Intel + Apple Silicon build.
+
+          This release is ad-hoc signed but not Apple-notarized."
+
+          gh release create "$TAG" "$ASSET" \
+            --title "Print as PocketMod $TAG" \
+            --notes "$NOTES"

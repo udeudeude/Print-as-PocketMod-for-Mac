@@ -9,34 +9,78 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
+
       - name: Swift version
         run: swift --version
-      - name: Validate bundle metadata and scripts
+
+      - name: Validate metadata and scripts
         run: |
           plutil -lint Resources/Info.plist
           zsh -n scripts/install.sh
           zsh -n scripts/uninstall.sh
           zsh -n scripts/package-release.sh
+
       - name: Test with warnings as errors
         run: swift test -Xswiftc -warnings-as-errors
+
       - name: Release build with warnings as errors
         run: swift build -c release --product PocketModApp -Xswiftc -warnings-as-errors
-      - name: Exercise installer
+
+      - name: Exercise source installer
         run: |
-          TEST_HOME="$RUNNER_TEMP/pocketmod-home"
+          TEST_HOME="$RUNNER_TEMP/pocketmod-source-home"
           mkdir -p "$TEST_HOME"
           HOME="$TEST_HOME" \
             POCKETMOD_BUILD="$PWD/.build/release/PocketModApp" \
             zsh scripts/install.sh
+
           test -x "$TEST_HOME/Applications/Print as PocketMod.app/Contents/MacOS/PocketModApp"
           test -x "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           test -x "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
           zsh -n "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           zsh -n "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
-          grep -q 'open -n -a' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
-          grep -q 'PrintAsPocketModInput' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           grep -q 'PREFIX="plain"' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           grep -q 'PREFIX="guides"' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
           grep -q 'open -n -a "$APP" "$STAGED"' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
-          grep -q 'MODE=--plain' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
-          grep -q 'MODE=--guides' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
+
+      - name: Exercise downloadable package
+        run: |
+          VERSION="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
+          POCKETMOD_BUILD="$PWD/.build/release/PocketModApp" zsh scripts/package-release.sh
+
+          ZIP="$PWD/dist/Print-as-PocketMod-for-Mac-v$VERSION.zip"
+          VERIFY_DIR="$RUNNER_TEMP/pocketmod-package"
+          rm -rf "$VERIFY_DIR"
+          mkdir -p "$VERIFY_DIR"
+          ditto -x -k "$ZIP" "$VERIFY_DIR"
+
+          DIST="$VERIFY_DIR/Print as PocketMod $VERSION"
+          INSTALLER="$DIST/Install Print as PocketMod.command"
+          UNINSTALLER="$DIST/Uninstall Print as PocketMod.command"
+          APP="$DIST/.payload/Print as PocketMod.app"
+
+          test -f "$DIST/START HERE.html"
+          test -f "$DIST/LICENSE.txt"
+          test -x "$INSTALLER"
+          test -x "$UNINSTALLER"
+          test -x "$APP/Contents/MacOS/PocketModApp"
+          zsh -n "$INSTALLER"
+          zsh -n "$UNINSTALLER"
+
+          grep -q 'macOS 13 or later' "$DIST/START HERE.html"
+          grep -q 'Control-click or right-click' "$DIST/START HERE.html"
+          grep -q 'Apple Silicon' "$DIST/START HERE.html"
+
+          PACKAGE_HOME="$RUNNER_TEMP/pocketmod-package-home"
+          rm -rf "$PACKAGE_HOME"
+          mkdir -p "$PACKAGE_HOME"
+          HOME="$PACKAGE_HOME" zsh "$INSTALLER"
+
+          test -x "$PACKAGE_HOME/Applications/Print as PocketMod.app/Contents/MacOS/PocketModApp"
+          test -x "$PACKAGE_HOME/Library/PDF Services/Print as PocketMod"
+          test -x "$PACKAGE_HOME/Library/PDF Services/Print as PocketMod with Guides"
+
+          HOME="$PACKAGE_HOME" zsh "$UNINSTALLER"
+          test ! -e "$PACKAGE_HOME/Applications/Print as PocketMod.app"
+          test ! -e "$PACKAGE_HOME/Library/PDF Services/Print as PocketMod"
+          test ! -e "$PACKAGE_HOME/Library/PDF Services/Print as PocketMod with Guides"
