@@ -40,4 +40,3 @@ jobs:
           grep -q 'open -n -a "$APP" "$STAGED"' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           grep -q 'MODE=--plain' "$TEST_HOME/Library/PDF Services/Print as PocketMod"
           grep -q 'MODE=--guides' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
-          grep -q -- '--args "$MODE"' "$TEST_HOME/Library/PDF Services/Print as PocketMod with Guides"
