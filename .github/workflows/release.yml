@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -25,12 +25,8 @@ jobs:
           VERSION="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
           TAG="v$VERSION"
 
-          if [[ "${GITHUB_REF_TYPE:-}" != "tag" ]]; then
-            echo "Releases must run from a version tag." >&2
-            exit 1
-          fi
-          if [[ "$GITHUB_REF_NAME" != "$TAG" ]]; then
-            echo "Tag $GITHUB_REF_NAME does not match Info.plist version $VERSION" >&2
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite it." >&2
             exit 1
           fi
 
@@ -136,5 +132,6 @@ jobs:
           This release is ad-hoc signed but not Apple-notarized."
 
           gh release create "$TAG" "$ASSET" \
+            --target "$GITHUB_SHA" \
             --title "Print as PocketMod $TAG" \
             --notes "$NOTES"
