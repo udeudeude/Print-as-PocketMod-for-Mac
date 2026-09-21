@@ -3,11 +3,50 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUNDLED_APP="$SCRIPT_DIR/Print as PocketMod.app"
+BUNDLED_APP="$SCRIPT_DIR/.payload/Print as PocketMod.app"
+[[ -d "$BUNDLED_APP" ]] || BUNDLED_APP="$SCRIPT_DIR/Print as PocketMod.app"
+
 APP="$HOME/Applications/Print as PocketMod.app"
 SERVICES="$HOME/Library/PDF Services"
 PLAIN="$SERVICES/Print as PocketMod"
 GUIDED="$SERVICES/Print as PocketMod with Guides"
+
+is_interactive_command() {
+  [[ -t 0 && "${0:t}" == *.command ]]
+}
+
+show_dialog() {
+  local title="$1"
+  local message="$2"
+  /usr/bin/osascript - "$title" "$message" <<'APPLESCRIPT'
+on run argv
+    display dialog (item 2 of argv) buttons {"OK"} default button "OK" with title (item 1 of argv)
+end run
+APPLESCRIPT
+}
+
+on_exit() {
+  local status=$?
+  if (( status != 0 )) && is_interactive_command; then
+    set +e
+    show_dialog \
+      "Print as PocketMod" \
+      "Installation did not finish.
+
+The Terminal window contains the error details." >/dev/null 2>&1
+    print
+    read -k 1 "?Press any key to close..."
+    print
+  fi
+  return $status
+}
+trap on_exit EXIT
+
+OS_MAJOR="$(/usr/bin/sw_vers -productVersion | /usr/bin/cut -d. -f1)"
+if (( OS_MAJOR < 13 )); then
+  echo "Print as PocketMod requires macOS 13 or later." >&2
+  exit 1
+fi
 
 mkdir -p "$HOME/Applications"
 
@@ -22,7 +61,7 @@ install_binary() {
 }
 
 if [[ -d "$BUNDLED_APP" ]]; then
-  echo "Installing prebuilt Print as PocketMod..."
+  echo "Installing Print as PocketMod..."
   rm -rf "$APP"
   /usr/bin/ditto "$BUNDLED_APP" "$APP"
 else
@@ -45,6 +84,11 @@ else
 fi
 
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
+
+# Running this installer is the user's explicit approval of the downloaded
+# utility. Clear quarantine only from the installed helper copy so macOS does
+# not ask the user to approve the same download a second time when printing.
+/usr/bin/xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 if [[ -x "$LSREGISTER" ]]; then
@@ -79,9 +123,6 @@ fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
 
-# Copy the ephemeral print spool before returning control to printtool.agent.
-# The mode is encoded in the staged filename, so the helper needs only the
-# document-open event that LaunchServices reliably delivers.
 STAGING="${TMPDIR:-/tmp}/PrintAsPocketModInput"
 /bin/mkdir -p "$STAGING" || exit 1
 
@@ -107,12 +148,20 @@ SERVICE_EOF
 write_service "$PLAIN" "--plain"
 write_service "$GUIDED" "--guides"
 
-echo
-echo "Installed:"
-echo "  File -> Print -> PDF -> Print as PocketMod"
-echo "  File -> Print -> PDF -> Print as PocketMod with Guides"
+[[ -x "$APP/Contents/MacOS/PocketModApp" ]]
+[[ -x "$PLAIN" ]]
+[[ -x "$GUIDED" ]]
 
-if [[ -t 0 && "${0:t}" == *.command ]]; then
-  read -k 1 "?Press any key to close..."
-  echo
+echo
+echo "Print as PocketMod is installed."
+echo "Use File -> Print -> PDF, then choose:"
+echo "  Print as PocketMod"
+echo "  Print as PocketMod with Guides"
+
+if is_interactive_command; then
+  show_dialog \
+    "Print as PocketMod" \
+    "Installation complete.
+
+In any app, choose File > Print, open the PDF menu, then choose “Print as PocketMod” or “Print as PocketMod with Guides”."
 fi
