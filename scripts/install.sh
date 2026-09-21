@@ -79,9 +79,19 @@ fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
 
-# Keep the PDF Service minimal. LaunchServices starts the normal helper-app
-# process; mode and spool path are explicit arguments so they arrive together.
-exec /usr/bin/open -n -a "$APP" --args "$MODE" "$PDF"
+# Copy the ephemeral print spool before returning control to printtool.agent.
+# The helper deletes this staged copy after it has finished reading the PDF.
+STAGING="${TMPDIR:-/tmp}/PrintAsPocketModInput"
+/bin/mkdir -p "$STAGING" || exit 1
+STAGED="$STAGING/$(/usr/bin/uuidgen).pdf"
+/bin/cp "$PDF" "$STAGED" || exit 1
+
+/usr/bin/open -n -a "$APP" --args "$MODE" --input "$STAGED"
+STATUS=$?
+if (( STATUS != 0 )); then
+  /bin/rm -f "$STAGED"
+fi
+exit $STATUS
 SERVICE_EOF
   } > "$target"
 

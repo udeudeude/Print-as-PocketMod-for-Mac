@@ -17,6 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent("PrintAsPocketMod", isDirectory: true)
     }()
 
+    private lazy var inputStagingDirectory: URL = {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("PrintAsPocketModInput", isDirectory: true)
+    }()
+
     private lazy var logURL: URL? = {
         let manager = FileManager.default
         guard let library = try? manager.url(
@@ -40,7 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             at: outputDirectory,
             withIntermediateDirectories: true
         )
-        cleanupStaleTemporaryFiles()
+        cleanupStaleTemporaryFiles(in: outputDirectory)
+        cleanupStaleTemporaryFiles(in: inputStagingDirectory)
         discardOversizedLog()
 
         let version = Bundle.main.object(
@@ -54,11 +60,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "args=\(CommandLine.arguments.joined(separator: " | "))"
         )
 
-        if let launchInput = commandLineInputURL() {
+        if let launchInput = stagedCommandLineInputURL() {
             receivedInput = true
             process(
                 inputURL: launchInput,
-                includeGuides: includeGuidesForLaunch
+                includeGuides: includeGuidesForLaunch,
+                removeInputAfterProcessing: true
             )
         }
 
@@ -88,23 +95,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for filename in filenames {
             process(
                 inputURL: URL(fileURLWithPath: filename),
-                includeGuides: includeGuidesForLaunch
+                includeGuides: includeGuidesForLaunch,
+                removeInputAfterProcessing: false
             )
         }
     }
 
-    private func commandLineInputURL() -> URL? {
-        CommandLine.arguments
-            .dropFirst()
-            .lazy
-            .map { URL(fileURLWithPath: $0) }
-            .first {
-                $0.pathExtension.lowercased() == "pdf" &&
-                FileManager.default.fileExists(atPath: $0.path)
-            }
+    private func stagedCommandLineInputURL() -> URL? {
+        let arguments = CommandLine.arguments
+        guard let marker = arguments.firstIndex(of: "--input") else {
+            return nil
+        }
+
+        let valueIndex = arguments.index(after: marker)
+        guard valueIndex < arguments.endIndex else {
+            return nil
+        }
+
+        let url = URL(fileURLWithPath: arguments[valueIndex])
+        guard url.pathExtension.lowercased() == "pdf",
+              FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        return url
     }
 
-    private func process(inputURL: URL, includeGuides: Bool) {
+    private func process(
+        inputURL: URL,
+        includeGuides: Bool,
+        removeInputAfterProcessing: Bool
+    ) {
         let canonicalPath = inputURL.standardizedFileURL.path
         guard processedInputPaths.insert(canonicalPath).inserted else {
             log("Ignored duplicate PDF input: \(canonicalPath)")
@@ -133,10 +153,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 outputURL: outputURL,
                 includeGuides: includeGuides
             )
+            if removeInputAfterProcessing {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
             temporaryOutputs.append(outputURL)
             log("Created PocketMod: \(outputURL.path)")
             openOutput(outputURL)
         } catch {
+            if removeInputAfterProcessing {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
             try? FileManager.default.removeItem(at: outputURL)
             log("Imposition failed: \(error.localizedDescription)")
             showError(error.localizedDescription) {
@@ -189,10 +215,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent("\(UUID().uuidString)-\(stem)-PocketMod.pdf")
     }
 
-    private func cleanupStaleTemporaryFiles() {
+    private func cleanupStaleTemporaryFiles(in directory: URL) {
         let manager = FileManager.default
         guard let entries = try? manager.contentsOfDirectory(
-            at: outputDirectory,
+            at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else {
