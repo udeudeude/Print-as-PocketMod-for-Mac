@@ -121,12 +121,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
 
+        let outputURL = makeTemporaryOutputURL(for: inputURL)
+
         do {
             try FileManager.default.createDirectory(
                 at: outputDirectory,
                 withIntermediateDirectories: true
             )
-            let outputURL = makeTemporaryOutputURL(for: inputURL)
             try PocketModImposer.impose(
                 inputURL: inputURL,
                 outputURL: outputURL,
@@ -136,7 +137,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             log("Created PocketMod: \(outputURL.path)")
             openOutput(outputURL)
         } catch {
-            log("Imposition failed: \(error.localizedDescription)")
+            try? FileManager.default.removeItem(at: outputURL)
+            log("Imposition failed: \(error.localizedDescription)"
             showError(error.localizedDescription) {
                 self.finishOne()
             }
