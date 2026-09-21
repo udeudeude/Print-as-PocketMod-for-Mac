@@ -138,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openOutput(outputURL)
         } catch {
             try? FileManager.default.removeItem(at: outputURL)
-            log("Imposition failed: \(error.localizedDescription)"
+            log("Imposition failed: \(error.localizedDescription)")
             showError(error.localizedDescription) {
                 self.finishOne()
             }
