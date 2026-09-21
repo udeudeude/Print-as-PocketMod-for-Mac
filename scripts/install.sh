@@ -79,9 +79,9 @@ fi
 
 [[ -n "$PDF" && -f "$PDF" ]] || exit 0
 
-# Keep the PDF Service minimal. LaunchServices hands the spool PDF from
-# printtool.agent to the normal helper-app process.
-exec /usr/bin/open -n -a "$APP" "$PDF" --args "$MODE"
+# Keep the PDF Service minimal. LaunchServices starts the normal helper-app
+# process; mode and spool path are explicit arguments so they arrive together.
+exec /usr/bin/open -n -a "$APP" --args "$MODE" "$PDF"
 SERVICE_EOF
   } > "$target"
 

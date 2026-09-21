@@ -4,7 +4,8 @@ import PocketModCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingJobs = 0
-    private var receivedOpenEvent = false
+    private var receivedInput = false
+    private var processedInputPaths: Set<String> = []
     private var temporaryOutputs: [URL] = []
     private var terminationWorkItem: DispatchWorkItem?
 
@@ -53,8 +54,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "args=\(CommandLine.arguments.joined(separator: " | "))"
         )
 
+        if let launchInput = commandLineInputURL() {
+            receivedInput = true
+            process(
+                inputURL: launchInput,
+                includeGuides: includeGuidesForLaunch
+            )
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            if !self.receivedOpenEvent && self.pendingJobs == 0 {
+            if !self.receivedInput && self.pendingJobs == 0 {
                 self.log("No PDF open event arrived")
                 self.showFatalError(
                     "No PDF was received from the Print dialog. " +
@@ -71,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
-        receivedOpenEvent = true
+        receivedInput = true
         terminationWorkItem?.cancel()
         log("Received openFiles: \(filenames.joined(separator: " | "))")
         sender.reply(toOpenOrPrint: .success)
@@ -84,7 +93,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func commandLineInputURL() -> URL? {
+        CommandLine.arguments
+            .dropFirst()
+            .lazy
+            .map { URL(fileURLWithPath: $0) }
+            .first {
+                $0.pathExtension.lowercased() == "pdf" &&
+                FileManager.default.fileExists(atPath: $0.path)
+            }
+    }
+
     private func process(inputURL: URL, includeGuides: Bool) {
+        let canonicalPath = inputURL.standardizedFileURL.path
+        guard processedInputPaths.insert(canonicalPath).inserted else {
+            log("Ignored duplicate PDF input: \(canonicalPath)")
+            return
+        }
+
         guard inputURL.pathExtension.lowercased() == "pdf" else {
             log("Rejected non-PDF input: \(inputURL.path)")
             showFatalError("The Print service did not provide a PDF.")
@@ -95,9 +121,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingJobs += 1
         log("Processing PDF: \(inputURL.path), guides=\(includeGuides)")
 
-        let outputURL = makeTemporaryOutputURL(for: inputURL)
-
         do {
+            try FileManager.default.createDirectory(
+                at: outputDirectory,
+                withIntermediateDirectories: true
+            )
+            let outputURL = makeTemporaryOutputURL(for: inputURL)
             try PocketModImposer.impose(
                 inputURL: inputURL,
                 outputURL: outputURL,
@@ -107,7 +136,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             log("Created PocketMod: \(outputURL.path)")
             openOutput(outputURL)
         } catch {
-            try? FileManager.default.removeItem(at: outputURL)
             log("Imposition failed: \(error.localizedDescription)")
             showError(error.localizedDescription) {
                 self.finishOne()
