@@ -91,7 +91,7 @@ cat > "$START_HERE" <<HTML_EOF
 </ol>
 
 <h2>Compatibility</h2>
-<p>Requires <strong>macOS 13 or later</strong>. The included app is universal and contains native code for both <strong>Intel</strong> and <strong>Apple Silicon</strong> Macs.</p>
+<p>Requires <strong>macOS 11 Big Sur or later</strong>. The included app is universal and contains native code for both <strong>Intel</strong> and <strong>Apple Silicon</strong> Macs.</p>
 
 <h2>What it installs</h2>
 <p><code>~/Applications/Print as PocketMod.app</code><br>

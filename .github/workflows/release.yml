@@ -53,8 +53,8 @@ jobs:
           X86_BUILD=".build-release-x86_64"
           ARM_BUILD=".build-release-arm64"
 
-          swift build -c release --arch x86_64 --product PocketModApp --build-path "$X86_BUILD"
-          swift build -c release --arch arm64 --product PocketModApp --build-path "$ARM_BUILD"
+          MACOSX_DEPLOYMENT_TARGET=11.0 swift build -c release --arch x86_64 --product PocketModApp --build-path "$X86_BUILD"
+          MACOSX_DEPLOYMENT_TARGET=11.0 swift build -c release --arch arm64 --product PocketModApp --build-path "$ARM_BUILD"
 
           X86_DIR="$(swift build -c release --arch x86_64 --build-path "$X86_BUILD" --show-bin-path)"
           ARM_DIR="$(swift build -c release --arch arm64 --build-path "$ARM_BUILD" --show-bin-path)"
