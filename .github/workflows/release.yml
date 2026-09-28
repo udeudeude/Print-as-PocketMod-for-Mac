@@ -66,6 +66,14 @@ jobs:
           echo "Universal architectures: $ARCHS"
           [[ "$ARCHS" == *x86_64* ]]
           [[ "$ARCHS" == *arm64* ]]
+
+          for ARCH in x86_64 arm64; do
+            THIN="$RUNNER_TEMP/PocketModApp-$ARCH"
+            lipo "$UNIVERSAL_BINARY" -thin "$ARCH" -output "$THIN"
+            otool -l "$THIN" | grep -A3 LC_BUILD_VERSION
+            otool -l "$THIN" | grep -A3 LC_BUILD_VERSION | grep -q 'minos 11.0'
+          done
+
           echo "UNIVERSAL_BINARY=$UNIVERSAL_BINARY" >> "$GITHUB_ENV"
 
       - name: Package
@@ -131,7 +139,7 @@ jobs:
           If macOS cannot verify the developer, Control-click or right-click the installer, choose Open, then choose Open again.
 
           COMPATIBILITY
-          macOS 13 or later. Universal Intel + Apple Silicon build.
+          macOS 11 Big Sur or later. Universal Intel + Apple Silicon build.
 
           This release is ad-hoc signed but not Apple-notarized."
 
