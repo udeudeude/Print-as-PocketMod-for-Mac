@@ -24,7 +24,10 @@ jobs:
         run: swift test -Xswiftc -warnings-as-errors
 
       - name: Release build with warnings as errors
-        run: swift build -c release --product PocketModApp -Xswiftc -warnings-as-errors
+        run: |
+          swift build -c release --product PocketModApp -Xswiftc -warnings-as-errors
+          otool -l .build/release/PocketModApp | grep -A3 LC_BUILD_VERSION
+          otool -l .build/release/PocketModApp | grep -A3 LC_BUILD_VERSION | grep -q 'minos 11.0'
 
       - name: Exercise source installer
         run: |
@@ -67,7 +70,7 @@ jobs:
           zsh -n "$INSTALLER"
           zsh -n "$UNINSTALLER"
 
-          grep -q 'macOS 13 or later' "$DIST/START HERE.html"
+          grep -q 'macOS 11 Big Sur or later' "$DIST/START HERE.html"
           grep -q 'Control-click or right-click' "$DIST/START HERE.html"
           grep -q 'Apple Silicon' "$DIST/START HERE.html"
 
