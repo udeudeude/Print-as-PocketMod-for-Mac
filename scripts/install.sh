@@ -43,8 +43,8 @@ The Terminal window contains the error details." >/dev/null 2>&1
 trap on_exit EXIT
 
 OS_MAJOR="$(/usr/bin/sw_vers -productVersion | /usr/bin/cut -d. -f1)"
-if (( OS_MAJOR < 13 )); then
-  echo "Print as PocketMod requires macOS 13 or later." >&2
+if (( OS_MAJOR < 11 )); then
+  echo "Print as PocketMod requires macOS 11 Big Sur or later." >&2
   exit 1
 fi
 
