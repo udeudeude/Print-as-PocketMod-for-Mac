@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "PrintAsPocketMod",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v11)],
     products: [
         .library(name: "PocketModCore", targets: ["PocketModCore"]),
         .executable(name: "PocketModApp", targets: ["PocketModApp"]),
